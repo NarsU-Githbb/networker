@@ -1,0 +1,18 @@
+//When I started this project I was using .jsx, but changed to .tsx somewhere down the line
+//would need to be configured into tsconfig.json instead
+
+{
+  "compilerOptions": {
+    "paths": {
+      "@/*": ["./src/*"]
+
+  },
+     "jsx": "react-jsx",
+    "checkJs": true // Keeps your own code clean
+  },
+  "exclude": [
+    "node_modules", 
+    "dist", 
+    "src/components/ui/**/*.jsx" // Prevents shadcn noise in your editor
+  ]
+}
