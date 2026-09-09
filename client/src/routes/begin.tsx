@@ -3,20 +3,13 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useForm } from "@tanstack/react-form"
 import { toast } from "sonner" //This is a direct trigger function to launch temporary alert notifications.
 import * as z from "zod" //zod is a validation tool for the username
-import { motion } from "framer-motion";;
+import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import {leadPlayerSchema} from "@/lib/player-schema"
 
-
-const formSchema = z.object({
-  username: z
-    .string()
-    .min(3, "Username must be at least 3 characters.")
-    .max(10, "Username must be at most 10 characters.")
-    .regex(/^[a-zA-Z0-9_]+$/, "Only letters, numbers, and underscores allowed."),
-})
 
 export const Route = createFileRoute('/begin')({
   component: Begin,
@@ -26,16 +19,16 @@ function Begin() {
  const { socket } = Route.useRouteContext() 
    const navigate = useNavigate()
     const [step, setStep] = useState(1)
-  const [user1, setUser1] = useState<string>("")
+  const [lead, setLead] = useState<string>("")
   const [secureRoomId, setSecureRoomId] = useState<string>("")
 
   
 
  const form = useForm({
     defaultValues: {username: "" },
-    validators: { onSubmit: formSchema },
+    validators: { onSubmit: leadPlayerSchema },
     onSubmit: async ({ value }) => { //Async might not be needed here?
-      setUser1(value.username)
+      setLead(value.username)
       socket.emit("create_room", {username: value.username})
       toast("Form successfully submitted!", {
         description: `Logged username: ${value.username}`,
@@ -46,28 +39,42 @@ function Begin() {
   })
 
   useEffect(() => {
-    // Listen for the event from the server
-    socket.on("room_made", (data) => {
+    const handleRoomMade = (data: { roomId: string }) => {
     setSecureRoomId(data.roomId);
-      
-    });
+  };
 
-    return () => {
-      socket.off("room_made");
-    };
-  }, [socket]);
+  const handleRoomOpened = (data: { roomId: string }) => {
+    navigate({
+      to: "/lobby",
+      search: {
+        roomId: data.roomId,
+        username: lead,
+      },
+    });
+  };
+
+  socket.on("room_made", handleRoomMade);
+  socket.on("room_opened", handleRoomOpened);
+
+  return () => {
+    socket.off("room_made", handleRoomMade);
+    socket.off("room_opened", handleRoomOpened);
+  };
+}, [socket, navigate, lead]);
 
    const handleProceedToLobby = () => {
     if (!secureRoomId) {
       toast.error("Room ID hasn't generated yet. Please wait a moment.");
       return;
     }
+
+    socket.emit("open_room")
     
     navigate({
       to: '/lobby',
       search: {
         roomId: secureRoomId,
-        username: user1,
+        username: lead,
       },
     })
   };
@@ -84,7 +91,7 @@ function Begin() {
         <div className="w-1/2 pl-12 ml-[-40px] shrink-0">
           <Card className="w-full">
             <CardHeader>
-              <CardTitle>Welcome to the Name-Questionnaire!</CardTitle>
+              <CardTitle>Welcome Teamlead!</CardTitle>
             </CardHeader>
             <CardContent>
               <form
@@ -102,7 +109,7 @@ function Begin() {
                       const isInvalid = field.state.meta.isTouched && !field.state.meta.isValid
                       return (
                         <Field data-invalid={isInvalid}>
-                          <FieldLabel htmlFor="q-username">Username</FieldLabel>
+                          <FieldLabel htmlFor="q-username">Player name</FieldLabel>
                           <Input
                             id="q-username"
                             name={field.name}
@@ -112,7 +119,7 @@ function Begin() {
                             aria-invalid={isInvalid}
                             placeholder="Type here..."
                           />
-                          <FieldDescription>This name will identify your account.</FieldDescription>
+                          <FieldDescription>This name will identify you amongst other players.</FieldDescription>
                           {isInvalid && <FieldError errors={field.state.meta.errors as any} />}
                         </Field>
                       )
@@ -134,11 +141,11 @@ function Begin() {
         <div className="w-1/2 pl-20 shrink-0"> 
           <Card className="w-full">
             <CardHeader>
-              <CardTitle>Your Link is Ready!</CardTitle>
+              <CardTitle>Your Game ID is Ready!</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <Field>
-                <FieldLabel htmlFor="generated-link">Connection Link</FieldLabel>
+                <FieldLabel htmlFor="generated-link">Game ID</FieldLabel>
                 <div className="flex gap-2">
                   <Input id="generated-link" value={secureRoomId} readOnly className="bg-muted" />
                   <Button 
@@ -167,7 +174,7 @@ function Begin() {
                   Back
                 </Button>
                 <Button type="button" onClick={handleProceedToLobby}>
-                 Make Connection
+                 Create Room
                 </Button>
               </Field>
             </CardFooter>

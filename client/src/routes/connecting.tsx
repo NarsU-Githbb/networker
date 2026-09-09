@@ -10,15 +10,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-
-
-const formSchema = z.object({
-  username: z
-    .string()
-    .min(3, "Username must be at least 3 characters.")
-    .max(10, "Username must be at most 10 characters.")
-    .regex(/^[a-zA-Z0-9_]+$/, "Only letters, numbers, and underscores allowed."),
-})
+import { getInvitedPlayerSchema } from "@/lib/player-schema"
 
 export const Route = createFileRoute('/connecting')({
   component: Connection,
@@ -28,28 +20,31 @@ export const Route = createFileRoute('/connecting')({
 function Connection() {
    const { socket } = Route.useRouteContext() 
   const navigate = useNavigate() 
+  const [existingPlayers, setExistingPlayers] = useState<string[]>([])
   const [step, setStep] = useState(1)
   const [secureRoomId, setSecureRoomId] = useState<string>("")
 
   const form = useForm({
      defaultValues: {username: "" },
-     validators: { onSubmit: formSchema },
+     validators: { onSubmit: getInvitedPlayerSchema(existingPlayers)  },
      onSubmit: async ({ value }) => {
        socket.emit(
         "room_ready", 
         { roomId: secureRoomId, username: value.username }, 
         (response: { success: boolean }) => {
           if (response.success) {
-            toast.success("Successfully joined the chatroom!");
+            toast.success("Successfully joined the lobby!");
             navigate({ 
-              to: '/chat',
+              to: '/lobby',
               search: {
                 roomId: secureRoomId,
                 username: value.username
               }
             })
           } else {
-            toast.error("Chatroom ID not found or expired!");
+            toast.error(
+    response.error || "Unable to join the room."
+  );
             setStep(1); // Send them back to fix the ID
           }
         }
@@ -57,7 +52,7 @@ function Connection() {
     },
   })
 
-   const user2ProcessID = () => {
+   const playerProcessID = () => {
   if (!secureRoomId.trim()) {
     toast.error("Please enter a chatroom ID!");
     return;
@@ -87,11 +82,11 @@ function Connection() {
           <div className="w-1/2 pl-20 shrink-0"> 
             <Card className="w-full">
               <CardHeader>
-                <CardTitle>Add your chat id here!</CardTitle>
+                <CardTitle>Add Your Game ID Here!</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <Field>
-                  <FieldLabel htmlFor="generated-link">Connection Link</FieldLabel>
+                  <FieldLabel htmlFor="generated-link">Game ID</FieldLabel>
                   <div className="flex gap-2">
                     <Input id="generated-link" value={secureRoomId}  onChange={(e) => setSecureRoomId(e.target.value)} className="bg-muted" />
                   </div>
@@ -99,7 +94,7 @@ function Connection() {
               </CardContent>
               <CardFooter>
                 <Field orientation="horizontal" className="w-full justify-end gap-2">
-                  <Button id= "make-connection-btn" type="button" form="id-form" onClick= {user2ProcessID} >
+                  <Button id= "make-connection-btn" type="button" form="id-form" onClick= {playerProcessID} >
                     Make Connection
                   </Button>
                 </Field>
@@ -114,7 +109,7 @@ function Connection() {
           <div className="w-1/2 pl-12 ml-[-40px] shrink-0">
             <Card className="w-full">
               <CardHeader>
-                <CardTitle>Welcome to the Name-Questionnaire!</CardTitle>
+                <CardTitle>Welcome Junior Dev!</CardTitle>
               </CardHeader>
              
                 <form
@@ -133,7 +128,7 @@ function Connection() {
                         const isInvalid = field.state.meta.isTouched && !field.state.meta.isValid
                         return (
                           <Field data-invalid={isInvalid}>
-                            <FieldLabel htmlFor="q-username">Username</FieldLabel>
+                            <FieldLabel htmlFor="q-username">Player Name</FieldLabel>
                             <Input
                               id="q-username"
                               name={field.name}
@@ -143,7 +138,7 @@ function Connection() {
                               aria-invalid={isInvalid}
                               placeholder="Type here..."
                             />
-                            <FieldDescription>This name will identify your account.</FieldDescription>
+                            <FieldDescription>This name will identify you amongst other players.</FieldDescription>
                             {isInvalid && <FieldError errors={field.state.meta.errors as any} />}
                           </Field>
                         )

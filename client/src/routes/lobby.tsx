@@ -39,12 +39,12 @@ function Lobbying() {
     }, 5000) 
   }, 10 * 60 * 1000)
 
-    socket.on("user2_joined", () => {
+    socket.on("player_joined", () => {
       setIsError(false)
       setNotification("Someone joined your room! Waiting for them to choose a name...")
     })
 
-     socket.on("user2_name_added", (data: { username: string }) => {
+     socket.on("player_name_added", (data: { username: string }) => {
       setNotification(`Connected! Starting chat with ${data.username}...`)
 
     setTimeout(() => {
@@ -56,8 +56,8 @@ function Lobbying() {
     return () => {
       clearTimeout(timeout)
       socket.off("connect")
-      socket.off("user2_joined")
-      socket.off("user2_identity_revealed") 
+      socket.off("player_joined")
+      socket.off("player_name_added") 
     }
   }, [socket, navigate, roomId])
   return (
@@ -68,11 +68,11 @@ function Lobbying() {
       </p>
               <Card className="w-full gap-x-80">
                 <CardHeader>
-                  <CardTitle>Chat Lobby</CardTitle>
+                  <CardTitle>Game Lobby</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <Field>
-                    <FieldLabel htmlFor="q-username">Matching you with a chat partner...</FieldLabel>
+                    <FieldLabel htmlFor="q-username">Matching you with the other players...</FieldLabel>
                     </Field>
           <WaitingLobbyIcon />
           </CardContent> 

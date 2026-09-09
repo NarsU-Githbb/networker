@@ -41,9 +41,9 @@ return (
       <div ref={contentRef} className="min-h-screen flex flex-col items-center py-24 px-6 text-center bg-zinc-100">
         <h1 className="mb-6 text-4xl font-extrabold tracking-tighter md:text-6xl lg:text-7xl">
           <span className="text-transparent bg-clip-text bg-gradient-to-r to-orange-600 from-yellow-400">
-            Name of the game
+            Networker
           </span>
-          <br /> the multiplayer party game
+          <br /> The Multiplayer Jobhunting Game
         </h1>
        
         <div className="flex gap-4 mb-16">
