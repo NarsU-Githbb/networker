@@ -40,9 +40,9 @@
   NetworkingGameState
   NetworkingPlayer
   NetworkingConnection
-  ConnectionCollectedPayload
-  GameStateUpdatedPayload
-  GameMenuActionPayload
-  SystemMessagePayload
-  GameEndedPayload
+  ConnectionCollected
+  GameStateUpdated
+  GameMenuAction
+  SystemMessage
+  GameEnded
 
