@@ -13,16 +13,16 @@ interface CustomSocket extends Socket {
 export interface AddRooms {
   ID: string;
   leadPlayer: {
-    socketId: string
+    connectionId: string
     username: string
   }
   players: {
-    socketId: string;
+    connectionId: string;
     username: string;
   }[]; 
   maxPlayers: 4;
   liveState: "pending" | "live"
-  gameState: "lobby" | "playing";
+  gameState: "lobby" | "playing" | "paused" | "ended";
 }
 
 const activeRoom: AddRooms[] = []
@@ -49,8 +49,8 @@ export function handleLobby(io: Server, socket: CustomSocket) {
 const room: AddRooms = { 
   
        ID: secureRoomId,
-  leadPlayer: { socketId: socket.id, username: data.username },
-  players: [{ socketId: socket.id, username: data.username }],
+  leadPlayer: { connectionId: socket.id, username: data.username },
+  players: [{ connectionId: socket.id, username: data.username }],
   maxPlayers: 4, 
   liveState: "pending",
   gameState: "lobby" 
@@ -166,7 +166,7 @@ socket.on("room_ready", (data: { roomId: string; username: string; }, callback) 
     socket.roomId = data.roomId;
 
     foundRoom.players.push({
-      socketId: socket.id,
+      connectionId: socket.id,
       username: data.username,
     });
 
