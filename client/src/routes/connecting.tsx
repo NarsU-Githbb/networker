@@ -16,20 +16,39 @@ export const Route = createFileRoute('/connecting')({
   component: Connection,
 })
 
-
 function Connection() {
    const { socket } = Route.useRouteContext() 
   const navigate = useNavigate() 
-  const [existingPlayers, setExistingPlayers] = useState<string[]>([])
+  const [existingPlayers, setExistingPlayers] = useState<string[]>([]) //<-fix this
   const [step, setStep] = useState(1)
   const [secureRoomId, setSecureRoomId] = useState<string>("")
+
+
+  const playerProcessID = () => {
+  if (!secureRoomId.trim()) {
+    toast.error("Please enter a chatroom ID!");
+    return;
+  }
+  socket.emit(
+    "verify_room", 
+    { roomId: secureRoomId }, 
+    (response: { success: boolean; error?: string }) => {
+      if (response.success) {
+        toast.success("Room found! Notifying host...");
+        setStep(2);
+      } else {
+        toast.error(response.error || "Invalid Chatroom ID!");
+      }
+    }
+  );
+};
 
   const form = useForm({
      defaultValues: {username: "" },
      validators: { onSubmit: getInvitedPlayerSchema(existingPlayers)  },
      onSubmit: async ({ value }) => {
        socket.emit(
-        "room_ready", 
+        "joining_room", 
         { roomId: secureRoomId, username: value.username }, 
         (response: { success: boolean }) => {
           if (response.success) {
@@ -42,34 +61,11 @@ function Connection() {
               }
             })
           } else {
-            toast.error(
-    response.error || "Unable to join the room."
-  );
-            setStep(1); // Send them back to fix the ID
+            toast.error(response.error || "Unable to join the room.");
           }
-        }
-      );
+        });
     },
   })
-
-   const playerProcessID = () => {
-  if (!secureRoomId.trim()) {
-    toast.error("Please enter a chatroom ID!");
-    return;
-  }
-  socket.emit(
-    "verify_room", 
-    { roomId: secureRoomId }, 
-    (response: { success: boolean; error?: string }) => {
-      if (response.success) {
-        toast.success("Room found! Notifying host...");
-        setStep(2); // ID is valid, slide to the Username card safely
-      } else {
-        toast.error(response.error || "Invalid Chatroom ID!");
-      }
-    }
-  );
-};
   
   return (    
       <div className="flex-col justify-center items-center h-screen p-6 mt-25 w-full max-w-md mx-auto overflow-hidden">
@@ -95,7 +91,7 @@ function Connection() {
               <CardFooter>
                 <Field orientation="horizontal" className="w-full justify-end gap-2">
                   <Button id= "make-connection-btn" type="button" form="id-form" onClick= {playerProcessID} >
-                    Make Connection
+                    <p>Make Connection</p>
                   </Button>
                 </Field>
               </CardFooter>

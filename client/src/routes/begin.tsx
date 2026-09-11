@@ -45,7 +45,7 @@ function Begin() {
 
   const handleRoomOpened = (data: { roomId: string }) => {
     navigate({
-      to: "/lobby",
+      to: `/lobby`,
       search: {
         roomId: data.roomId,
         username: lead,
@@ -54,11 +54,11 @@ function Begin() {
   };
 
   socket.on("room_made", handleRoomMade);
-  socket.on("room_opened", handleRoomOpened);
+  socket.on("join_lobby", handleRoomOpened);
 
   return () => {
     socket.off("room_made", handleRoomMade);
-    socket.off("room_opened", handleRoomOpened);
+    socket.off("join_lobby", handleRoomOpened);
   };
 }, [socket, navigate, lead]);
 
@@ -70,13 +70,6 @@ function Begin() {
 
     socket.emit("open_room")
     
-    navigate({
-      to: '/lobby',
-      search: {
-        roomId: secureRoomId,
-        username: lead,
-      },
-    })
   };
 
 
