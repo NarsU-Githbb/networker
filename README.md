@@ -38,4 +38,23 @@ This system runs as a single Node.js application:
 **Deployment:** Docker
 **Packages:** npm
 
+## State Management
+
+The client uses Zustand for shared Networker game state. The React UI, Socket.IO
+client, and DOM game engine can access the same store.
+
+React uses the store for meaningful UI updates such as scores, the timer, game
+phase, system messages, and the winner screen. Socket.IO writes approved server
+updates into the store. The game engine reads the store for gameplay data, while
+per-frame movement, keyboard input, animation values, and DOM references remain
+inside the game engine.
+
+Zustand is installed with the frontend dependencies, so a normal installation
+is sufficient:
+
+```bash
+cd client
+npm install
+```
+
 ## Files structure (can be used later)
