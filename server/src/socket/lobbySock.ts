@@ -247,6 +247,13 @@ socket.on("joining_room", (data: { roomId: string; username: string; }, callback
     });
 
   foundRoom.players.forEach((player) => {
+    console.log(
+    "Sending lobby_state to:",
+    player.connectionId,
+    "count:",
+    foundRoom.players.length
+  );
+
   io.to(player.connectionId).emit("lobby_state", {
     playerCount: foundRoom.players.length,
     maxPlayers: foundRoom.maxPlayers,
@@ -255,7 +262,44 @@ socket.on("joining_room", (data: { roomId: string; username: string; }, callback
     gameState: foundRoom.gameState,
   });
 });
+
 });
+
+socket.on("request_synced_state", ({ roomId }) => {
+
+const foundRoom = activeRooms.find((room) => room.sessionId === roomId);
+    if (!foundRoom) {
+   console.log("request_lobby_state: room not found");
+      return;
+    }
+
+  const player = foundRoom.players.find(
+    player => player.connectionId === socket.id
+  );
+
+  if (!player) {
+    console.log(
+      "request_lobby_state: player is not in this room"
+    );
+    return;
+  }
+
+  console.log(
+    "Sending requested lobby_state to:",
+    socket.id,
+    "count:",
+    foundRoom.players.length
+  );
+
+  socket.emit("lobby_state", {
+    playerCount: foundRoom.players.length,
+    maxPlayers: foundRoom.maxPlayers,
+    teamLead: socket.id === foundRoom.leadPlayer.connectionId,
+    liveState: foundRoom.liveState,
+    gameState: foundRoom.gameState,
+  });
+});
+
 // ----------------------------------------
   // ACTUAL LOBBY SOCKETS: 
   // ----------------------------------------

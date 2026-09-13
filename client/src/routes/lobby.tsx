@@ -84,20 +84,31 @@ socket.emit("player_disconnect", (response: { success: boolean, error?: string})
 
   useEffect(() => {
 
-    socket.on("lobby_state",
-    (data: {
+
+//sends the particular lobby state info from lead / player   
+const handleLobbyState = (data: {
     playerCount: number,
     maxPlayers: number,
     teamLead: boolean,
     liveState: "pending" | "live",
     gameState: "lobby" | "playing" | "paused" | "ended",
   }) => {
+    console.log("RECEIVED LOBBY STATE:", data);
+
     setPlayerCount(data.playerCount);
     setTeamLead(data.teamLead);
-    setLiveState(data.liveState)
-    setGameState(data.gameState)
-  }
-);
+    setLiveState(data.liveState);
+    setGameState(data.gameState);
+  };
+
+  socket.on("lobby_state", handleLobbyState);
+
+  // Asks server for the real current lobby state (so everyone is synced into same lobby state)
+  socket.emit("request_synced_state", {
+    roomId
+  });
+
+
     const intervalId = setInterval(() => {
       setCountdown((prev) => {
         if (prev <= 1) {
@@ -149,7 +160,7 @@ to: "/"
        if (countdownIntervalRef.current) {
         clearInterval(countdownIntervalRef.current);
      }
-     socket.off("lobby_state")
+     socket.off("lobby_state", handleLobbyState)
       socket.off("connect")
       socket.off("player_joined")
       socket.off("player_name_added") 
@@ -185,10 +196,11 @@ to: "/"
 
         </div>
       
+      {teamLead && 
               <span className="flex items-endfont-mono bg-zinc-100 dark:bg-zinc-800 px-2 py-1 rounded text-sm font-bold">
                 Time Left: {formatTime(countdown)}
               </span>
-    
+}
         
               </div>
                       </FieldLabel>
