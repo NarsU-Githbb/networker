@@ -48,10 +48,10 @@ return (
        
         <div className="flex gap-4 mb-16">
           <Button size="lg" className="font-bold uppercase tracking-widest px-8 shadow-xl">
-            <a href="./begin">Lead gaming session!</a>
+            <a href="./create-room">Lead gaming session!</a>
           </Button>
           <Button variant="outline" size="lg" className="border-zinc-300">
-            <a href="./connecting">Join session as Player</a>
+            <a href="./join-room">Join session as Player</a>
           </Button>
         </div>
         </div>

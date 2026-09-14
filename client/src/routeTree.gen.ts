@@ -10,10 +10,10 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as LobbyRouteImport } from './routes/lobby'
+import { Route as JoinRoomRouteImport } from './routes/join-room'
 import { Route as GameRouteImport } from './routes/game'
-import { Route as ConnectingRouteImport } from './routes/connecting'
+import { Route as CreateRoomRouteImport } from './routes/create-room'
 import { Route as ChatRouteImport } from './routes/chat'
-import { Route as BeginRouteImport } from './routes/begin'
 import { Route as IndexRouteImport } from './routes/index'
 
 const LobbyRoute = LobbyRouteImport.update({
@@ -21,24 +21,24 @@ const LobbyRoute = LobbyRouteImport.update({
   path: '/lobby',
   getParentRoute: () => rootRouteImport,
 } as any)
+const JoinRoomRoute = JoinRoomRouteImport.update({
+  id: '/join-room',
+  path: '/join-room',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const GameRoute = GameRouteImport.update({
   id: '/game',
   path: '/game',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ConnectingRoute = ConnectingRouteImport.update({
-  id: '/connecting',
-  path: '/connecting',
+const CreateRoomRoute = CreateRoomRouteImport.update({
+  id: '/create-room',
+  path: '/create-room',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ChatRoute = ChatRouteImport.update({
   id: '/chat',
   path: '/chat',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const BeginRoute = BeginRouteImport.update({
-  id: '/begin',
-  path: '/begin',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -49,43 +49,50 @@ const IndexRoute = IndexRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/begin': typeof BeginRoute
   '/chat': typeof ChatRoute
-  '/connecting': typeof ConnectingRoute
+  '/create-room': typeof CreateRoomRoute
   '/game': typeof GameRoute
+  '/join-room': typeof JoinRoomRoute
   '/lobby': typeof LobbyRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/begin': typeof BeginRoute
   '/chat': typeof ChatRoute
-  '/connecting': typeof ConnectingRoute
+  '/create-room': typeof CreateRoomRoute
   '/game': typeof GameRoute
+  '/join-room': typeof JoinRoomRoute
   '/lobby': typeof LobbyRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/begin': typeof BeginRoute
   '/chat': typeof ChatRoute
-  '/connecting': typeof ConnectingRoute
+  '/create-room': typeof CreateRoomRoute
   '/game': typeof GameRoute
+  '/join-room': typeof JoinRoomRoute
   '/lobby': typeof LobbyRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/begin' | '/chat' | '/connecting' | '/game' | '/lobby'
+  fullPaths: '/' | '/chat' | '/create-room' | '/game' | '/join-room' | '/lobby'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/begin' | '/chat' | '/connecting' | '/game' | '/lobby'
-  id: '__root__' | '/' | '/begin' | '/chat' | '/connecting' | '/game' | '/lobby'
+  to: '/' | '/chat' | '/create-room' | '/game' | '/join-room' | '/lobby'
+  id:
+    | '__root__'
+    | '/'
+    | '/chat'
+    | '/create-room'
+    | '/game'
+    | '/join-room'
+    | '/lobby'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  BeginRoute: typeof BeginRoute
   ChatRoute: typeof ChatRoute
-  ConnectingRoute: typeof ConnectingRoute
+  CreateRoomRoute: typeof CreateRoomRoute
   GameRoute: typeof GameRoute
+  JoinRoomRoute: typeof JoinRoomRoute
   LobbyRoute: typeof LobbyRoute
 }
 
@@ -98,6 +105,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LobbyRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/join-room': {
+      id: '/join-room'
+      path: '/join-room'
+      fullPath: '/join-room'
+      preLoaderRoute: typeof JoinRoomRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/game': {
       id: '/game'
       path: '/game'
@@ -105,11 +119,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof GameRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/connecting': {
-      id: '/connecting'
-      path: '/connecting'
-      fullPath: '/connecting'
-      preLoaderRoute: typeof ConnectingRouteImport
+    '/create-room': {
+      id: '/create-room'
+      path: '/create-room'
+      fullPath: '/create-room'
+      preLoaderRoute: typeof CreateRoomRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/chat': {
@@ -117,13 +131,6 @@ declare module '@tanstack/react-router' {
       path: '/chat'
       fullPath: '/chat'
       preLoaderRoute: typeof ChatRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/begin': {
-      id: '/begin'
-      path: '/begin'
-      fullPath: '/begin'
-      preLoaderRoute: typeof BeginRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -138,10 +145,10 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  BeginRoute: BeginRoute,
   ChatRoute: ChatRoute,
-  ConnectingRoute: ConnectingRoute,
+  CreateRoomRoute: CreateRoomRoute,
   GameRoute: GameRoute,
+  JoinRoomRoute: JoinRoomRoute,
   LobbyRoute: LobbyRoute,
 }
 export const routeTree = rootRouteImport

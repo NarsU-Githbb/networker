@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import WaitingLobbyIcon from '@/components/WaitingIcon'
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { Field, FieldLabel } from "@/components/ui/field"
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -15,7 +15,6 @@ export const Route = createFileRoute('/lobby')({
   validateSearch: (search) => lobbySearchSchema.parse(search),
   component: Lobbying,
 })
-
  
 
 function Lobbying() {
@@ -24,24 +23,23 @@ function Lobbying() {
    const { roomId, username } = Route.useSearch()
    const [playerCount, setPlayerCount] = useState<number>(1);
    const [teamLead, setTeamLead] = useState(false);
-   const [liveState, setLiveState] = useState<"pending" | "live">("pending");
-   const [gameState, setGameState] = useState<"lobby" | "playing" | "paused" | "ended">("lobby");
   const [notification, setNotification] = useState<string>("")
   const [isError, setIsError] = useState<boolean>(false)
+  const [expiresAt, setExpiresAt] = useState<number | null>(null);
   const [countdown, setCountdown] = useState<number>(10 * 60); 
 
 const canStartGame = teamLead && playerCount >= 2;
-  const countdownIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-   // Helper function to turn total seconds into a clean "MM:SS" string
+  // Helper function to turn total seconds into a clean "MM:SS" string
+
   const formatTime = (timeInSeconds: number) => {
     const minutes = Math.floor(timeInSeconds / 60);
     const seconds = timeInSeconds % 60;
     return `${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
   };
 
-
 //function that starts the game
+
  const gameLaunch = () => {
   socket.emit("launch_game_session", (response: { success: boolean; error?: string }) => {
     if (!response.success) {
@@ -51,81 +49,73 @@ const canStartGame = teamLead && playerCount >= 2;
   });
 };
 
-// NOT FINISHED YET ---- DISCONNECTING LOGIC -->
+//logic for user leaving lobby by the cancel button
 
-/*
 const lobbyExit = () => {
-if (teamLead) {
-  socket.emit("lead_disconnect", (response: { success: boolean, error?: string}) => {
-  if (!response.success) {
-    setIsError(true);
-    setNotification("Unable to leave hobby")
-  }
-  }
-)}
-
-if (!teamLead) {
-socket.emit("player_disconnect", (response: { success: boolean, error?: string}) => {
- if (!response.success) {
-    setIsError(true);
-    setNotification("Unable to leave hobby")
- }
- if (response.success) {
-  setIsError(false)
-  setNotification(`${foundRoom.player.username} left`)
- }
+  socket.emit("leaving_lobby", (response: { success: boolean, error?: string}) => {
+    if (response.success) {
+      navigate({ to: "/" }) 
+    } else {
+      setIsError(true);
+      setNotification(response.error || "Unable to leave lobby.");
+    }
+  })
 }
-)}
 
-}
-*/
+useEffect(() => {
 
-//<---CHECK DISCONECTING LOGIC
+/*when browser opens lobby the expiresAt is still null which would break the timer so
+that's why we have this safe guard here: */
+
+  if (!expiresAt) {
+    return;
+  }
+
+  const updateCountdown = () => {
+    const remaining = Math.max(
+      0,
+      Math.ceil((expiresAt - Date.now()) / 1000)
+    );
+
+    setCountdown(remaining);
+  };
+
+  updateCountdown();
+
+  const intervalId = setInterval(updateCountdown, 1000);
+
+  return () => {
+    clearInterval(intervalId);
+  };
+}, [expiresAt]);
 
   useEffect(() => {
 
 
 //sends the particular lobby state info from lead / player   
+
 const handleLobbyState = (data: {
     playerCount: number,
     maxPlayers: number,
     teamLead: boolean,
     liveState: "pending" | "live",
     gameState: "lobby" | "playing" | "paused" | "ended",
+    expiresAt: number;
   }) => {
     console.log("RECEIVED LOBBY STATE:", data);
 
     setPlayerCount(data.playerCount);
     setTeamLead(data.teamLead);
-    setLiveState(data.liveState);
-    setGameState(data.gameState);
+    setExpiresAt(data.expiresAt);
   };
 
   socket.on("lobby_state", handleLobbyState);
 
   // Asks server for the real current lobby state (so everyone is synced into same lobby state)
+  
   socket.emit("request_synced_state", {
     roomId
   });
-
-
-    const intervalId = setInterval(() => {
-      setCountdown((prev) => {
-        if (prev <= 1) {
-          clearInterval(intervalId);
-          setIsError(true);
-          setNotification("Lobby closing due to inactivity. Redirecting home...")
-    
-    setTimeout(() => {
-      navigate({ to: '/' }) 
-    }, 3000) 
-   return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-
-      countdownIntervalRef.current = intervalId;
 
     socket.on("player_joined", () => {
       setIsError(false)
@@ -133,8 +123,25 @@ const handleLobbyState = (data: {
     })
 
      socket.on("player_name_added", (data: { username: string }) => {
-
+setIsError(false)
     setNotification(`Connected! ${data.username} has joined the room.`);
+  }
+);
+
+socket.on("player_left", (data: {
+  username: string;
+  playerCount: number;
+}) => {
+  setIsError(false);
+  setNotification(`${data.username} left the lobby.`);
+});
+
+socket.emit("rejoin_lobby", {roomId, username},
+  (response: { success: boolean; error?: string }) => {
+    if (!response.success) {
+      setIsError(true);
+      setNotification(response.error || "Unable to rejoin lobby.");
+    }
   }
 );
     
@@ -145,26 +152,26 @@ socket.on("game_started", () => {
   });
 });
 
-//CHECK THIS DISCONNECTING LOGIC
-socket.on("lead_left", () => {
-navigate({
-to: "/"
 
-})
-})
-//<--CHECK THIS DISCONNECTING LOGIC
+socket.on("lobby_expired", () => {
+    setIsError(true);
+  setNotification(
+    "Lobby expired due to inactivity. Returning home..."
+  );
 
-
+  setTimeout(() => {
+    navigate({ to: "/" });
+  }, 2000);
+});
 
     return () => {
-       if (countdownIntervalRef.current) {
-        clearInterval(countdownIntervalRef.current);
-     }
      socket.off("lobby_state", handleLobbyState)
+     socket.off("player_left")
       socket.off("connect")
       socket.off("player_joined")
       socket.off("player_name_added") 
       socket.off("game_started")
+      socket.off("lobby_expired")
     }
   }, [socket, navigate, roomId, username])
 
@@ -209,7 +216,7 @@ to: "/"
           </CardContent> 
           <CardFooter>
                         <Field orientation="horizontal" className="w-full justify-end gap-2">
-                          <Button type="button" variant="outline" /* onClick={lobbyExit}*/>
+                          <Button type="button" variant="outline" onClick={lobbyExit}>
                             <p>Cancel</p>
                             </Button>
                            <Button type="button" onClick={gameLaunch} disabled={!canStartGame}>

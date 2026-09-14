@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useForm } from "@tanstack/react-form"
-import { toast } from "sonner" //This is a direct trigger function to launch temporary alert notifications.
-import * as z from "zod" //zod is a validation tool for the username
+import { toast } from "sonner" 
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -11,7 +10,7 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/componen
 import {leadPlayerSchema} from "@/lib/player-schema"
 
 
-export const Route = createFileRoute('/begin')({
+export const Route = createFileRoute('/create-room')({
   component: Begin,
 })
 
@@ -27,7 +26,7 @@ function Begin() {
  const form = useForm({
     defaultValues: {username: "" },
     validators: { onSubmit: leadPlayerSchema },
-    onSubmit: async ({ value }) => { //Async might not be needed here?
+    onSubmit: ({ value }) => { 
       setLead(value.username)
       socket.emit("create_room", {username: value.username})
       toast("Form successfully submitted!", {

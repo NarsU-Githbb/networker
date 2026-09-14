@@ -2,15 +2,13 @@ import { Server, Socket } from "socket.io";
 import { tokenRandomizer } from "../utils/randomizer.js";
 
 
-//need this customsocket here in a case of player disconnecting - it will indentify the
-//disconnected user faster
+/*need this customsocket here in a case of player disconnects - it will indentify which 
+lobby a disconnected/reconnecting player belongs to. */
 
 interface CustomSocket extends Socket {
   username?: string;
   roomId?: string;
 }
-
-//consider making an interface for players
 
 export interface AddRooms {
   sessionId: string;
@@ -21,43 +19,107 @@ export interface AddRooms {
   players: {
     connectionId: string;
     username: string;
+    disconnectTimer?: ReturnType<typeof setTimeout>;
   }[]; 
   maxPlayers: 4;
   liveState: "pending" | "live"
   gameState: "lobby" | "playing" | "paused" | "ended";
+  expiresAt: number
 }
 
 //variable for holding all gaming rooms active right now across all the networks
 
 const activeRooms: AddRooms[] = []
 
+function destroyRoom(room: AddRooms, io: Server) {
+  const index = activeRooms.indexOf(room);
+
+  if (index !== -1) {
+    activeRooms.splice(index, 1);
+  }
+
+  io.to(room.sessionId).emit("lobby_expired");
+
+//System has 2 rooms: activeRooms & socket rooms so need to clean room from both:
+
+  io.in(room.sessionId).socketsLeave(room.sessionId);
+}
+
+function removePlayerFromRoom(room: AddRooms, socket: CustomSocket, io: Server) {
+
+  const playerIndex = room.players.findIndex(
+    (player) => player.connectionId === socket.id
+  );
+
+  if (playerIndex === -1) {
+    return;
+  }
+
+  const player = room.players[playerIndex];
+
+  // Host leaving = destroy the entire lobby
+
+  if (player.connectionId === room.leadPlayer.connectionId) {
+    destroyRoom(room, io);
+    return;
+  }
+
+  // Remove normal player & remove their Socket.IO room membership
+
+  room.players.splice(playerIndex, 1);
+  socket.leave(room.sessionId);
+
+  // Tell everyone else that the player left the room
+
+  io.to(room.sessionId).emit("player_left", {
+    username: player.username,
+    playerCount: room.players.length,
+  });
+
+  // Send updated authoritative state to everyone
+
+  room.players.forEach((remainingPlayer) => {
+    io.to(remainingPlayer.connectionId).emit("lobby_state", {
+      playerCount: room.players.length,
+      maxPlayers: room.maxPlayers,
+      teamLead:
+        remainingPlayer.connectionId === room.leadPlayer.connectionId,
+      liveState: room.liveState,
+      gameState: room.gameState,
+      expiresAt: room.expiresAt,
+    });
+  });
+}
+
 export function handleLobby(io: Server, socket: CustomSocket) {
 
- // ----------------------------------------
-  // LEAD PLAYER CREATES/RESERVES A ROOM
-  // ----------------------------------------
+ /* ----------------------------------------
+     LEAD PLAYER CREATES/RESERVES A ROOM
+ -------------------------------------------
 
- // ----------------------------------------
-  // list of socket events:
-  // - create_room = initilizes the room & adds leadplayer in it, but doesn't open it for other players yet.
- //  - room_made = meanwhile, lead moves to step2 & this sends randomized roomId into UI for lead to copy. 
- //  - open_room = checks that all the conditions are right & opens the room for other players.
- //  - join_lobby = tells UI to navigate leadplayer to lobby/
- //  - lobby_state = Establishes the current authoritative state of the lobby with leadplayer being the lead.
-  // ----------------------------------------
+ -------------------------------------------
+list of socket events:
+- create_room = initilizes the room & adds leadplayer in it, but doesn't open it for other players yet.
+- room_made = meanwhile, lead moves to step2 & this sends randomized roomId into UI for lead to copy & share. 
+- open_room = checks that all the conditions are right & opens the room for other players.
+- join_lobby = tells UI to navigate leadplayer to lobby/
+- lobby_state = Establishes the current authoritative state of the lobby with leadplayer being the lead.
+ ------------------------------------------*/
  
 
   socket.on("create_room", (data: {username: string}) => {
      console.log(`${data.username} is creating a room.`);
       
   // Store the username directly on the socket instance for future tracking
+
     socket.username = data.username;
 
  // When a user connects, immediately send them the secure room ID
+
   const secureRoomId = tokenRandomizer();
 
   socket.roomId = secureRoomId;
- 
+
 const room: AddRooms = { 
   
   sessionId: secureRoomId,
@@ -65,20 +127,21 @@ const room: AddRooms = {
   players: [{ connectionId: socket.id, username: data.username }],
   maxPlayers: 4, 
   liveState: "pending",
-  gameState: "lobby" 
+  gameState: "lobby",
+expiresAt: 0,
     };
 
-     activeRooms.push(room)
+activeRooms.push(room)
 
 socket.join(secureRoomId);
 
-  socket.emit("room_made", {
+socket.emit("room_made", {
     
-      roomId: secureRoomId,
-    })
+roomId: secureRoomId,
+     })
      })
 
-    socket.on("open_room", () => {
+socket.on("open_room", () => {
 const roomId = socket.roomId;
 
     if (!roomId) {
@@ -100,6 +163,7 @@ const roomId = socket.roomId;
     }
 
     // Don't open the room twice.
+
     if (room.liveState === "live") {
       socket.emit("room_error", {
         message: "Room is already open.",
@@ -108,7 +172,29 @@ const roomId = socket.roomId;
     }
 
     // THIS opens the room for everyone.
+
     room.liveState = "live";
+
+    //adds 10 minute expiration timer to the lobby
+
+    room.expiresAt = Date.now() + 10 * 60 * 1000;
+
+    setTimeout(() => {
+  const currentRoom = activeRooms.find(
+    (r) => r.sessionId === room.sessionId
+  );
+
+  if (!currentRoom) {
+    return;
+  }
+
+/*if gamestate is still lobby after 10mins then destroyroom - otherwise if timer is up &
+gamestate is something else like "playing" then nothing happens */
+
+  if (currentRoom.gameState === "lobby" ) {
+    destroyRoom(currentRoom, io);
+  }
+}, 10 * 60 * 1000);
 
     console.log(`Room ${room.sessionId} is now LIVE.`);
 
@@ -117,28 +203,34 @@ const roomId = socket.roomId;
     });
   
 
-    // Immediately synchronize the room's state.
+// Immediately synchronize the room's state.
+
   socket.emit("lobby_state", {
     playerCount: room.players.length,
     maxPlayers: room.maxPlayers,
     teamLead: true,
     liveState: room.liveState,
     gameState: room.gameState,
+    expiresAt: room.expiresAt
   });
+
 });
 
- // ----------------------------------------
-  // OTHER PLAYERS JOINING THE LOBBY
-  // ----------------------------------------
+/* ----------------------------------------
+    OTHER PLAYERS JOINING THE LOBBY
+   ----------------------------------------
 
-  // ----------------------------------------
-  // list of socket events:
-  // -verify_room = asks "is this room joinable?"
- //  -player_joined = tells lobby immediately that player has added roomID for their session & has pressed make connection button.
- //  -joining_room = actually adds player into the room & tells UI to navigate to lobby
- //  -player_name_added = tells lobby who has joined
- //  -lobby_state = updates the lobby state for everyone in the lobby with new player joined in & adds him to player count as well.
-  // ----------------------------------------
+-------------------------------------------
+  list of socket events:
+
+ -verify_room = asks "is this room joinable?"
+ -player_joined = tells lobby immediately that player has added roomID for their session & has pressed make connection button.
+ -unique_username_check = checks that the username is actually unique
+ -joining_room = actually adds player into the room & tells UI to navigate to lobby
+ -player_name_added = tells lobby who has joined
+ -lobby_state = updates the lobby state for everyone else in the lobby with new players info & adds him to player count as well.
+ -request_synced_state = Updates the current lobby_state for the player who joined as well. 
+ ------------------------------------------*/
 
 
 socket.on("verify_room", (data: { roomId: string }, callback) => {
@@ -174,7 +266,17 @@ socket.on("verify_room", (data: { roomId: string }, callback) => {
     return;
   }
 
-//room exists but max amount of players for a game is filled & at the lobby
+  //Room exists, but has expired
+
+  if (Date.now() >= foundRoom.expiresAt) {
+  callback({
+    success: false,
+    error: "This lobby has expired.",
+  });
+  return;
+}
+
+//Room exists but max amount of players for a game is filled
 
   if (foundRoom.players.length >= foundRoom.maxPlayers) {
     callback({
@@ -190,11 +292,46 @@ socket.on("verify_room", (data: { roomId: string }, callback) => {
   
 });
 
+socket.on("unique_username_check", (  data: { roomId: string; username: string }, callback) => {
+  
+  const foundRoom = activeRooms.find(
+      (room) => room.sessionId === data.roomId
+    );
+
+
+  if (!foundRoom) {
+    callback({
+        success: false,
+        error: "Room not found.",
+      });
+      return;
+    }
+
+    const existingPlayer = foundRoom.players.find(
+      (player) => player.username === data.username
+    );
+
+    if (existingPlayer) {
+callback({
+success:false,
+error: "Username is in use!"
+});
+return
+
+    }
+
+      callback({success: true});
+  });
+
 socket.on("joining_room", (data: { roomId: string; username: string; }, callback) => {
     const foundRoom = activeRooms.find((room) => room.sessionId === data.roomId);
 
-// lot of the logic here is the same as previous step in case if someone stops after verifying room & other users get in before they do / maxplayer get filled
-    if (!foundRoom) {
+/* lot of the logic here is the same as previous step in case if someone takes a break after 
+verifying the room & other users get in before they do thus maxplayer get's filled or some
+other condition is suddenly true.
+*/    
+
+if (!foundRoom) {
       callback({
         success: false,
         error: "Chatroom ID not found!",
@@ -202,7 +339,8 @@ socket.on("joining_room", (data: { roomId: string; username: string; }, callback
       return;
     }
 
-  //needs to check again in case lead exits suddenly
+  //needs to check this again in case lead exits suddenly
+
     if (foundRoom.liveState !== "live") {
       callback({
         success: false,
@@ -219,6 +357,14 @@ socket.on("joining_room", (data: { roomId: string; username: string; }, callback
       return;
     }
 
+    if (Date.now() >= foundRoom.expiresAt) {
+  callback({
+    success: false,
+    error: "This lobby has expired.",
+  });
+  return;
+}
+
       if (foundRoom.players.length >= foundRoom.maxPlayers) {
       callback({
         success: false,
@@ -227,7 +373,6 @@ socket.on("joining_room", (data: { roomId: string; username: string; }, callback
       return;
     }
 
-    // Room is live, so joining is allowed
     socket.username = data.username;
     socket.roomId = data.roomId;
 
@@ -260,6 +405,7 @@ socket.on("joining_room", (data: { roomId: string; username: string; }, callback
     teamLead: player.connectionId === foundRoom.leadPlayer.connectionId,
     liveState: foundRoom.liveState,
     gameState: foundRoom.gameState,
+    expiresAt: foundRoom.expiresAt,
   });
 });
 
@@ -284,12 +430,10 @@ const foundRoom = activeRooms.find((room) => room.sessionId === roomId);
     return;
   }
 
-  console.log(
-    "Sending requested lobby_state to:",
-    socket.id,
-    "count:",
-    foundRoom.players.length
-  );
+  if (foundRoom.gameState === "lobby" && Date.now() >= foundRoom.expiresAt) {
+    destroyRoom(foundRoom, io);
+    return;
+  }
 
   socket.emit("lobby_state", {
     playerCount: foundRoom.players.length,
@@ -297,40 +441,143 @@ const foundRoom = activeRooms.find((room) => room.sessionId === roomId);
     teamLead: socket.id === foundRoom.leadPlayer.connectionId,
     liveState: foundRoom.liveState,
     gameState: foundRoom.gameState,
+    expiresAt: foundRoom.expiresAt
+  });
+
+});
+
+/* ----------------------------------------
+ACTUAL LOBBY SOCKETS: 
+----------------------------------------
+
+
+----------------------------------------
+DiSCONNECTING FROM LOBBY 
+----------------------------------------
+
+  list of socket events:
+-leaving_lobby = intentional departures (by pressing cancel button in the lobby)
+-disconnect = unexpected connection loss (for example closing browser or network disconnection)
+-rejoin_lobby = logic that helps players to rejoin lobby if they disconnect accidentally
+*/
+
+
+socket.on("leaving_lobby", (callback) => {
+const foundRoom = activeRooms.find(
+    (room) => room.sessionId === socket.roomId
+  );
+
+  if (!foundRoom) {
+      callback({
+      success: false,
+      error: "Room not found.",
+    });
+    return;
+  }
+  removePlayerFromRoom(foundRoom, socket, io);
+
+  callback({
+    success: true,
   });
 });
 
-// ----------------------------------------
-  // ACTUAL LOBBY SOCKETS: 
-  // ----------------------------------------
-
-  /*
-// ----------------------------------------
-  // 1. DiSCONNECTING FROM LOBBY (working process)
-  // ----------------------------------------
-
-socket.on("lead_disconnect", (callback) => {
-  console.log(
-    `${foundRoom.leadPlayer.username} left - ${foundRoom.sessionId} disbanding`
+socket.on("disconnect", () => {
+  const foundRoom = activeRooms.find(
+    (room) => room.sessionId === socket.roomId
   );
 
-io.to("lead_left"), (callback) => {
- roomId: foundRoom.sessionId,
-}
-  });
+  if (!foundRoom) return;
 
-socket.on("player_disconnect", (callback) => {
- console.log(
-    `${foundRoom.player.username} left`
+   const player = foundRoom.players.find(
+    (player) => player.connectionId === socket.id
   );
- io.to(data.roomId).emit("player_left", {
-      username: data.username,
-      playerCount: foundRoom.players.length - 1,
-      maxPlayers: foundRoom.maxPlayers,
-    });
-  })
+
+if (!player) return; 
+
+/* add 30 second disconnect timer so that player doesn't get disconnected immidiately if 
+their internet connection cuts for a second or two for example.
 */
 
+player.disconnectTimer = setTimeout(() => {
+
+  const currentRoom = activeRooms.find(
+      (room) => room.sessionId === socket.roomId
+    );
+
+    if (!currentRoom) return;
+
+    const currentPlayer = currentRoom.players.find(
+      (player) => player.connectionId === socket.id
+    );
+
+    if (!currentPlayer) return;
+
+    removePlayerFromRoom(currentRoom, socket, io);
+  }, 30_000);
+});
+
+socket.on("rejoin_lobby", (  data: { roomId: string; username: string }, callback) => {
+  
+  const foundRoom = activeRooms.find(
+      (room) => room.sessionId === data.roomId
+    );
+
+
+  if (!foundRoom) {
+    callback({
+        success: false,
+        error: "Room not found.",
+      });
+      return;
+    }
+
+    const existingPlayer = foundRoom.players.find(
+      (player) => player.username === data.username
+    );
+
+        if (!existingPlayer) {
+      callback({
+        success: false,
+        error: "Player is not currently in this lobby.",
+      });
+      return;
+    }
+
+      if (existingPlayer.disconnectTimer) {
+        clearTimeout(existingPlayer.disconnectTimer);
+        existingPlayer.disconnectTimer = undefined;
+      }
+
+//update their current socketid (as their previous socketid will get cut when they disconnect)
+
+existingPlayer.connectionId = socket.id;
+
+if (existingPlayer.username === foundRoom.leadPlayer.username) {
+  foundRoom.leadPlayer.connectionId = socket.id;
+}
+
+      socket.username = existingPlayer.username;
+      socket.roomId = data.roomId;
+
+      socket.join(data.roomId);
+
+      callback({
+        success: true,
+      });
+
+      foundRoom.players.forEach((player) => {
+        io.to(player.connectionId).emit("lobby_state", {
+          playerCount: foundRoom.players.length,
+          maxPlayers: foundRoom.maxPlayers,
+          teamLead:
+            player.username === foundRoom.leadPlayer.username,
+          liveState: foundRoom.liveState,
+          gameState: foundRoom.gameState,
+          expiresAt: foundRoom.expiresAt,
+         });
+    });
+  }
+);
 // ----------------------------------------
   // 2. GAME LAUCH 
   // ----------------------------------------
@@ -360,7 +607,8 @@ socket.on("launch_game_session", (callback) => {
     return;
   }
 
-  // Only the lead player can start the game (how does this logic work?)
+  // Only the lead player can start the game 
+
   if (foundRoom.leadPlayer.connectionId !== socket.id) {
     callback({
       success: false,
@@ -369,7 +617,8 @@ socket.on("launch_game_session", (callback) => {
     return;
   }
 
-  // Need at least 2 players
+  // Need at least 2 players to start the game 
+
   if (foundRoom.players.length < 2) {
     callback({
       success: false,
@@ -379,6 +628,7 @@ socket.on("launch_game_session", (callback) => {
   }
 
   // Don't start the game twice
+
   if (foundRoom.gameState !== "lobby") {
     callback({
       success: false,
@@ -397,7 +647,8 @@ socket.on("launch_game_session", (callback) => {
     success: true,
   });
 
-  // Tell EVERYONE in the room
+  // Tell EVERYONE in the room that game has started (not sure if this goes to lobby or game route?)
+
   io.to(foundRoom.sessionId).emit("game_started", {
     roomId: foundRoom.sessionId,
   });

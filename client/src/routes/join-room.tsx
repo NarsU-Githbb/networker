@@ -1,25 +1,21 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
 import { useForm } from "@tanstack/react-form"
-import { toast } from "sonner" //This is a direct trigger function to launch temporary alert notifications.
-import * as z from "zod" //zod is a validation tool for the username
+import { toast } from "sonner" 
 import { motion } from "framer-motion";
-
-// Import your primitives from the UI folder
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { getInvitedPlayerSchema } from "@/lib/player-schema"
 
-export const Route = createFileRoute('/connecting')({
-  component: Connection,
+export const Route = createFileRoute('/join-room')({
+  component: Connecting,
 })
 
-function Connection() {
+function Connecting() {
    const { socket } = Route.useRouteContext() 
   const navigate = useNavigate() 
-  const [existingPlayers, setExistingPlayers] = useState<string[]>([]) //<-fix this
   const [step, setStep] = useState(1)
   const [secureRoomId, setSecureRoomId] = useState<string>("")
 
@@ -29,6 +25,9 @@ function Connection() {
     toast.error("Please enter a chatroom ID!");
     return;
   }
+
+//check if lead has made the room & is waiting in the lobby
+
   socket.emit(
     "verify_room", 
     { roomId: secureRoomId }, 
@@ -45,14 +44,27 @@ function Connection() {
 
   const form = useForm({
      defaultValues: {username: "" },
-     validators: { onSubmit: getInvitedPlayerSchema(existingPlayers)  },
+     validators: { onSubmit: getInvitedPlayerSchema  },
      onSubmit: async ({ value }) => {
-       socket.emit(
-        "joining_room", 
-        { roomId: secureRoomId, username: value.username }, 
-        (response: { success: boolean }) => {
-          if (response.success) {
-            toast.success("Successfully joined the lobby!");
+
+//first check that the username is unique
+
+socket.emit("unique_username_check", 
+{roomId: secureRoomId, username: value.username}, (response: { success: boolean; error?: string }) => {
+
+      if (!response.success) {
+        toast.error(response.error)
+        return
+      }
+
+//if unique, then join the room
+
+socket.emit("joining_room", { roomId: secureRoomId, username: value.username }, 
+  (response: { success: boolean; error?: string }) => {
+     
+    if (response.success) {
+    toast.success("Successfully joined the lobby!");
+            
             navigate({ 
               to: '/lobby',
               search: {
@@ -62,10 +74,13 @@ function Connection() {
             })
           } else {
             toast.error(response.error || "Unable to join the room.");
-          }
-        });
-    },
-  })
+            }
+          })
+        }
+      )
+    }}
+  )
+
   
   return (    
       <div className="flex-col justify-center items-center h-screen p-6 mt-25 w-full max-w-md mx-auto overflow-hidden">
@@ -90,7 +105,7 @@ function Connection() {
               </CardContent>
               <CardFooter>
                 <Field orientation="horizontal" className="w-full justify-end gap-2">
-                  <Button id= "make-connection-btn" type="button" form="id-form" onClick= {playerProcessID} >
+                  <Button id= "make-connection-btn" type="button" onClick= {playerProcessID} >
                     <p>Make Connection</p>
                   </Button>
                 </Field>
