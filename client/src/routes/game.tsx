@@ -1,4 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
+import { NetworkerHud } from '@/components/networker/NetworkerHud'
+import { NetworkerMaze } from '@/components/networker/NetworkerMaze'
 
 
 export const Route = createFileRoute('/game')({
@@ -6,10 +8,12 @@ export const Route = createFileRoute('/game')({
 })
 
 function Game() {
-    
-
-     return ( 
-        <h1>Hello this is the game! </h1>
-     )
+  // The route composes the screen. Game state is read inside NetworkerHud from
+  // Zustand so the route does not own gameplay or networking logic.
+  return (
+    <main className="networker-page">
+      <NetworkerHud />
+      <NetworkerMaze />
+    </main>
+  )
 }
-
