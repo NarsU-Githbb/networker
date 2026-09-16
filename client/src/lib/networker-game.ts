@@ -1,4 +1,4 @@
-// Game rules 
+// Game rules
 export const WINNING_SCORE = 100;
 export const MIN_CONNECTION_POINTS = 2;
 export const MAX_CONNECTION_POINTS = 20;
@@ -74,7 +74,9 @@ export function collectItem(
 ): NetworkerGameState {
 	if (state.phase !== 'playing') return state;
 
-	const connection = state.connectionItems.find((item) => item.itemId === itemId);
+	const connection = state.connectionItems.find(
+		(item) => item.itemId === itemId,
+	);
 
 	if (!connection || connection.isCollected) return state;
 
@@ -105,5 +107,8 @@ export function collectItem(
 export function getWinner(state: NetworkerGameState): NetworkerPlayer | null {
 	if (!state.winnerUsername) return null;
 
-	return state.players.find((player) => player.username === state.winnerUsername) ?? null;
+	return (
+		state.players.find((player) => player.username === state.winnerUsername) ??
+		null
+	);
 }
