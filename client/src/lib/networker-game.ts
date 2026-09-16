@@ -1,4 +1,6 @@
-// Game rules 
+import { NETWORKER_PLAYER_START } from './networker-map';
+
+// Game rules
 export const WINNING_SCORE = 100;
 export const MIN_CONNECTION_POINTS = 2;
 export const MAX_CONNECTION_POINTS = 20;
@@ -10,6 +12,11 @@ export type GamePhase = 'lobby' | 'playing' | 'paused' | 'ended';
 export type NetworkerPlayer = {
 	username: string;
 	score: number;
+	// Current maze cell, in the same row/col grid as NetworkerConnectionItem.
+	// Server-authoritative; the game engine only reads this for players other
+	// than the local one, since local movement renders from its own rAF state.
+	row: number;
+	col: number;
 };
 
 // Describes one Linkedin connection item on the map
@@ -41,19 +48,27 @@ export function createInitialNetworkerState(): NetworkerGameState {
 		phase: 'lobby',
 		winnerUsername: null,
 		systemMessage: 'Collect 100 LinkedIn connections before everyone else.',
+		// Temporary local placeholders. Person 1 will provide the real room
+		// players when the server sends the first approved game state.
 		players: [
-			{ username: 'Player 1', score: 0 },
-			{ username: 'Player 2', score: 0 },
-			{ username: 'Player 3', score: 0 },
-			{ username: 'Player 4', score: 0 },
+			{ username: 'Player 1', score: 0, ...NETWORKER_PLAYER_START },
+			{ username: 'Player 2', score: 0, ...NETWORKER_PLAYER_START },
+			{ username: 'Player 3', score: 0, ...NETWORKER_PLAYER_START },
+			{ username: 'Player 4', score: 0, ...NETWORKER_PLAYER_START },
 		],
+		// Temporary sample items for the prototype. Person 2 owns the spawn rules;
+		// the server will eventually provide the authoritative item state.
 		connectionItems: [
-			{ itemId: 'c1', row: 10, col: 18, points: 8, isCollected: false },
-			{ itemId: 'c2', row: 34, col: 42, points: 14, isCollected: false },
-			{ itemId: 'c3', row: 72, col: 24, points: 20, isCollected: false },
-			{ itemId: 'c4', row: 56, col: 70, points: 6, isCollected: false },
-			{ itemId: 'c5', row: 82, col: 60, points: 18, isCollected: false },
-			{ itemId: 'c6', row: 22, col: 76, points: 12, isCollected: false },
+			// Item positions use the shared maze's row/col coordinate system.
+			{ itemId: 'c1', row: 1, col: 3, points: 10, isCollected: false },
+			{ itemId: 'c2', row: 1, col: 9, points: 15, isCollected: false },
+			{ itemId: 'c3', row: 3, col: 1, points: 12, isCollected: false },
+			{ itemId: 'c4', row: 3, col: 7, points: 8, isCollected: false },
+			{ itemId: 'c5', row: 5, col: 1, points: 20, isCollected: false },
+			{ itemId: 'c6', row: 5, col: 9, points: 10, isCollected: false },
+			{ itemId: 'c7', row: 7, col: 3, points: 5, isCollected: false },
+			{ itemId: 'c8', row: 9, col: 7, points: 10, isCollected: false },
+			{ itemId: 'c9', row: 11, col: 9, points: 10, isCollected: false },
 		],
 	};
 }
@@ -66,7 +81,9 @@ export function collectItem(
 ): NetworkerGameState {
 	if (state.phase !== 'playing') return state;
 
-	const connection = state.connectionItems.find((item) => item.itemId === itemId);
+	const connection = state.connectionItems.find(
+		(item) => item.itemId === itemId,
+	);
 
 	if (!connection || connection.isCollected) return state;
 
@@ -97,5 +114,8 @@ export function collectItem(
 export function getWinner(state: NetworkerGameState): NetworkerPlayer | null {
 	if (!state.winnerUsername) return null;
 
-	return state.players.find((player) => player.username === state.winnerUsername) ?? null;
+	return (
+		state.players.find((player) => player.username === state.winnerUsername) ??
+		null
+	);
 }
