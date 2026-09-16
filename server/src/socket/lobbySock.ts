@@ -23,7 +23,7 @@ export interface AddRooms {
   }[]; 
   maxPlayers: 4;
   liveState: "pending" | "live"
-  gameState: "lobby" | "playing" | "paused" | "ended";
+  gameState: "lobby" | "playing";
   expiresAt: number
 }
 

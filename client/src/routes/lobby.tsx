@@ -99,7 +99,7 @@ const handleLobbyState = (data: {
     maxPlayers: number,
     teamLead: boolean,
     liveState: "pending" | "live",
-    gameState: "lobby" | "playing" | "paused" | "ended",
+    gameState: "lobby" | "playing",
     expiresAt: number;
   }) => {
     console.log("RECEIVED LOBBY STATE:", data);
