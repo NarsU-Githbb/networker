@@ -31,3 +31,18 @@ export function isNetworkerWalkable(row: number, col: number) {
 }
 
 export const NETWORKER_PLAYER_START = { row: 1, col: 1 }
+
+// One walkable spawn per maze corner (the layout is symmetric, so all four
+// are open floor tiles). Indexed by a player's seat - their stable position
+// in the room's player list - so spawn corners stay consistent across
+// clients without any extra coordination.
+export const NETWORKER_SPAWN_POINTS = [
+  { row: 1, col: 1 },
+  { row: 1, col: NETWORKER_MAP_COLUMNS - 2 },
+  { row: NETWORKER_MAP_ROWS - 2, col: 1 },
+  { row: NETWORKER_MAP_ROWS - 2, col: NETWORKER_MAP_COLUMNS - 2 },
+] as const
+
+export function getSpawnPoint(seat: number) {
+  return NETWORKER_SPAWN_POINTS[seat % NETWORKER_SPAWN_POINTS.length]
+}

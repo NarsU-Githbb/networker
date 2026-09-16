@@ -439,6 +439,12 @@
 	font-weight: 800;
 }
 
+.networker-maze-item-premium {
+  border-color: #4dd0e1;
+  color: #4dd0e1;
+  font-size: 0.65rem;
+}
+
 .networker-maze-player {
 	width: 23px;
 	height: 23px;
@@ -446,9 +452,27 @@
 	background: #ef785f66;
 }
 
-.networker-maze-player-remote {
+.networker-maze-player-seat-1 {
   border-color: #5b9bef;
   background: #5b9bef66;
+}
+
+.networker-maze-player-seat-2 {
+  border-color: #7ed957;
+  background: #7ed95766;
+}
+
+.networker-maze-player-seat-3 {
+  border-color: #c77dff;
+  background: #c77dff66;
+}
+
+.networker-maze-player-self {
+  box-shadow: 0 0 0 2px #f1f5ed;
+}
+
+.networker-maze-player-boosted {
+  box-shadow: 0 0 0 2px #f1f5ed, 0 0 10px 3px #4dd0e1;
 }
 
 .networker-maze-legend {

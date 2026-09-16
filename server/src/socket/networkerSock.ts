@@ -3,20 +3,53 @@ import type { CustomSocket } from "./lobbySock.js";
 import {
   collectItem,
   createNetworkerState,
+  spawnRandomItem,
   type NetworkerGameState,
 } from "../game/networker-game.js";
 
 // One authoritative NetworkerGameState per room, keyed by sessionId.
 const gameStates = new Map<string, NetworkerGameState>();
 
+// One item-respawn interval per room, so a mid-match item drought doesn't
+// leave players with nothing left to race for once the starting items run out.
+// Tuned fast (and multiple items per tick) because points per item dropped
+// to 1-2 - the board needs far more items in circulation to avoid dry spells.
+const respawnTimers = new Map<string, NodeJS.Timeout>();
+const ITEM_RESPAWN_INTERVAL_MS = 2000;
+const ITEMS_PER_RESPAWN_TICK = 3;
+
 // Called by lobbySock.ts once the lead player launches the match, so the
 // room's real players (not placeholder ones) start the score at zero.
 export function startNetworkerGame(
+  io: Server,
   roomId: string,
   players: { username: string }[],
 ): NetworkerGameState {
   const state = createNetworkerState(players);
   gameStates.set(roomId, state);
+
+  const existingTimer = respawnTimers.get(roomId);
+  if (existingTimer) clearInterval(existingTimer);
+
+  const timer = setInterval(() => {
+    const currentState = gameStates.get(roomId);
+    if (!currentState || currentState.phase !== "playing") {
+      clearInterval(timer);
+      respawnTimers.delete(roomId);
+      return;
+    }
+
+    let nextState = currentState;
+    for (let i = 0; i < ITEMS_PER_RESPAWN_TICK; i++) {
+      nextState = spawnRandomItem(nextState);
+    }
+    if (nextState === currentState) return; // no-op: board already full
+
+    gameStates.set(roomId, nextState);
+    io.to(roomId).emit("game_state_updated", nextState);
+  }, ITEM_RESPAWN_INTERVAL_MS);
+  respawnTimers.set(roomId, timer);
+
   return state;
 }
 

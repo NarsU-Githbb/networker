@@ -8,13 +8,26 @@ import {
   isNetworkerWalkable,
 } from "@/lib/networker-map"
 
+// Seat 0's color is the base .networker-maze-player color; seats 1-3 get a
+// modifier class. Cycles past 4 players rather than erroring.
+function seatColorClassName(seat: number): string {
+  const wrappedSeat = seat % 4
+  return wrappedSeat === 0 ? "" : ` networker-maze-player-seat-${wrappedSeat}`
+}
+
 type Cell = { row: number; col: number }
-type CellAnimation = { from: Cell; to: Cell; startTime: number }
+type CellAnimation = { from: Cell; to: Cell; startTime: number; durationMs: number }
 
 const MOVE_DURATION_MS = 130
+
+// Collecting a LinkedIn Premium item halves the local player's move duration
+// (so every step and dash covers its distance twice as fast) for this long.
+// Only applied to the local player's own animations - remote players' moves
+// always animate at MOVE_DURATION_MS since their boost state isn't synced.
+const SPEED_BOOST_DURATION_MS = 5000
+const BOOSTED_MOVE_DURATION_MS = MOVE_DURATION_MS / 2
 const MAZE_COLUMNS = NETWORKER_MAP[0].length
 
-// Checked in this order so one direction wins when multiple keys are held.
 const DIRECTIONS: Array<{ keys: string[]; deltaRow: number; deltaCol: number }> = [
   { keys: ["arrowup", "w"], deltaRow: -1, deltaCol: 0 },
   { keys: ["arrowdown", "s"], deltaRow: 1, deltaCol: 0 },
@@ -22,6 +35,25 @@ const DIRECTIONS: Array<{ keys: string[]; deltaRow: number; deltaCol: number }> 
   { keys: ["arrowright", "d"], deltaRow: 0, deltaCol: 1 },
 ]
 const MOVE_KEYS = new Set(DIRECTIONS.flatMap((direction) => direction.keys))
+
+// The most recently pressed key that's still held wins, not a fixed
+// priority order - otherwise a direction you haven't fully released yet
+// (very easy at speed) silently blocks a newly pressed turn.
+function getActiveDirection(pressOrder: string[]) {
+  for (let i = pressOrder.length - 1; i >= 0; i--) {
+    const key = pressOrder[i]
+    const match = DIRECTIONS.find((candidate) => candidate.keys.includes(key ?? ""))
+    if (match) return match
+  }
+  return undefined
+}
+
+// A dash covers this many tiles (stopping early at a wall) in the same
+// MOVE_DURATION_MS as a normal step, so it visibly moves faster. The
+// cooldown is what stops it from being spammed into a permanent speed boost.
+const DASH_KEY = " "
+const DASH_TILE_COUNT = 3
+const DASH_COOLDOWN_MS = 2000
 
 // The rendered tile size is a CSS clamp() that scales with viewport width
 // (see --networker-maze-tile-size in index.css), so it can't be a constant -
@@ -54,7 +86,7 @@ function applyAnimationFrame(
   time: number,
   tileSize: number,
 ) {
-  const t = Math.min(1, (time - animation.startTime) / MOVE_DURATION_MS)
+  const t = Math.min(1, (time - animation.startTime) / animation.durationMs)
   const from = cellCenter(animation.from.row, animation.from.col, tileSize)
   const to = cellCenter(animation.to.row, animation.to.col, tileSize)
   const x = from.x + (to.x - from.x) * t
@@ -78,13 +110,35 @@ export function NetworkerMaze({
     (state) => state.gameState.connectionItems,
   )
   const players = useNetworkerStore((state) => state.gameState.players)
-  const otherPlayers = players.filter((player) => player.username !== localUsername)
+  // Seat = stable position in the room's player list, assigned once at
+  // match start (createNetworkerState) and never reordered - used for both
+  // spawn corner and color, so they stay in sync across every client.
+  const playersWithSeat = players.map((player, seat) => ({ ...player, seat }))
+  const mySeat = playersWithSeat.find((player) => player.username === localUsername)?.seat ?? 0
+  const otherPlayers = playersWithSeat.filter((player) => player.username !== localUsername)
 
   const mazeRef = useRef<HTMLDivElement | null>(null)
   const playerTokenRef = useRef<HTMLSpanElement | null>(null)
-  const heldKeysRef = useRef<Set<string>>(new Set())
+  // Held movement keys in press order (oldest first) - see getActiveDirection.
+  const heldKeysRef = useRef<string[]>([])
   const cellRef = useRef({ ...NETWORKER_PLAYER_START })
   const animationRef = useRef<CellAnimation | null>(null)
+  const hasSpawnedRef = useRef(false)
+  const dashRequestedRef = useRef(false)
+  const lastDashTimeRef = useRef(-Infinity)
+  const speedBoostUntilRef = useRef(-Infinity)
+
+  // Seed the local player's own cell from the store's authoritative spawn
+  // position the first time it's available, instead of assuming everyone
+  // starts at NETWORKER_PLAYER_START - the server now spawns each seat at
+  // its own maze corner.
+  useEffect(() => {
+    if (hasSpawnedRef.current) return
+    const me = players.find((player) => player.username === localUsername)
+    if (!me) return
+    hasSpawnedRef.current = true
+    cellRef.current = { row: me.row, col: me.col }
+  }, [players, localUsername])
 
   // Render state for every OTHER player: their last known cell, an in-flight
   // interpolation (if they're mid-move), and the DOM token to animate.
@@ -129,6 +183,7 @@ export function NetworkerMaze({
         from: previousCell,
         to: { row, col },
         startTime: performance.now(),
+        durationMs: MOVE_DURATION_MS,
       })
       remoteCellsRef.current.set(username, { row, col })
     }
@@ -149,17 +204,33 @@ export function NetworkerMaze({
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === DASH_KEY) {
+        if (event.repeat) return
+        // Stop page scroll / button activation; the tick loop below is what
+        // actually enforces the cooldown, this just records the intent.
+        event.preventDefault()
+        dashRequestedRef.current = true
+        return
+      }
+
       const key = event.key.toLowerCase()
       if (!MOVE_KEYS.has(key)) return
       // Stop the browser's default arrow-key/space scroll, and signal to
       // extensions (e.g. vim-style keybinding tools) that the page already
       // handled this key so they don't also act on it.
       event.preventDefault()
-      heldKeysRef.current.add(key)
+      // Only push on a genuinely new press - OS auto-repeat re-fires keydown
+      // for a key that's already held, and re-adding it would make it
+      // impossible for a second, already-held key to ever take over.
+      if (!heldKeysRef.current.includes(key)) {
+        heldKeysRef.current.push(key)
+      }
     }
 
     const handleKeyUp = (event: KeyboardEvent) => {
-      heldKeysRef.current.delete(event.key.toLowerCase())
+      const key = event.key.toLowerCase()
+      const index = heldKeysRef.current.indexOf(key)
+      if (index !== -1) heldKeysRef.current.splice(index, 1)
     }
 
     window.addEventListener("keydown", handleKeyDown)
@@ -182,34 +253,63 @@ export function NetworkerMaze({
 
         // Idle: try to start a move toward whichever held direction is walkable.
         if (!animationRef.current && token) {
-          const direction = DIRECTIONS.find((candidate) =>
-            candidate.keys.some((key) => heldKeysRef.current.has(key)),
-          )
+          const direction = getActiveDirection(heldKeysRef.current)
+
+          // The dash key is consumed the moment it's checked (whether or not
+          // a direction is held), so a press with no direction held doesn't
+          // linger and fire a dash later once one is.
+          const dashRequested = dashRequestedRef.current
+          dashRequestedRef.current = false
 
           if (direction) {
-            const { row, col } = cellRef.current
-            const targetRow = row + direction.deltaRow
-            const targetCol = col + direction.deltaCol
+            const isDashReady = dashRequested && time - lastDashTimeRef.current >= DASH_COOLDOWN_MS
+            const stepCount = isDashReady ? DASH_TILE_COUNT : 1
 
-            if (isNetworkerWalkable(targetRow, targetCol)) {
+            const { row, col } = cellRef.current
+            let targetRow = row
+            let targetCol = col
+            const visitedCells: Cell[] = []
+
+            for (let step = 0; step < stepCount; step++) {
+              const nextRow = targetRow + direction.deltaRow
+              const nextCol = targetCol + direction.deltaCol
+              if (!isNetworkerWalkable(nextRow, nextCol)) break
+              targetRow = nextRow
+              targetCol = nextCol
+              visitedCells.push({ row: targetRow, col: targetCol })
+            }
+
+            if (visitedCells.length > 0) {
+              if (isDashReady) lastDashTimeRef.current = time
+
+              const durationMs =
+                time < speedBoostUntilRef.current ? BOOSTED_MOVE_DURATION_MS : MOVE_DURATION_MS
+
               animationRef.current = {
                 from: { row, col },
                 to: { row: targetRow, col: targetCol },
                 startTime: time,
+                durationMs,
               }
               cellRef.current = { row: targetRow, col: targetCol }
               socket.emit("player_moved", { row: targetRow, col: targetCol })
 
               // Ask the server for permission to collect; it owns scoring and
               // will broadcast game_state_updated with the approved result.
-              const landedItem = connectionItemsRef.current.find(
-                (item) =>
-                  item.row === targetRow &&
-                  item.col === targetCol &&
-                  !item.isCollected,
-              )
-              if (landedItem) {
-                socket.emit("collect_item", { itemId: landedItem.itemId })
+              // Every tile passed through counts, not just the landing tile,
+              // so dashing over an item still picks it up. Applying the
+              // speed boost is optimistic (not waiting for server approval),
+              // same as the dash cooldown - a purely client-side feel effect.
+              for (const cell of visitedCells) {
+                const passedItem = connectionItemsRef.current.find(
+                  (item) => item.row === cell.row && item.col === cell.col && !item.isCollected,
+                )
+                if (passedItem) {
+                  socket.emit("collect_item", { itemId: passedItem.itemId })
+                  if (passedItem.kind === "premium") {
+                    speedBoostUntilRef.current = time + SPEED_BOOST_DURATION_MS
+                  }
+                }
               }
             }
           }
@@ -227,6 +327,7 @@ export function NetworkerMaze({
           if (!animationRef.current) {
             paintCell(token, cellRef.current, tileSize)
           }
+          token.classList.toggle("networker-maze-player-boosted", time < speedBoostUntilRef.current)
         }
 
         // Same treatment, driven by the last player_moved message instead of
@@ -289,11 +390,17 @@ export function NetworkerMaze({
               >
                 {item && !item.isCollected && (
                   <span
-                    className="networker-maze-item"
-                    title={`${item.points} LinkedIn connections`}
+                    className={`networker-maze-item${
+                      item.kind === "premium" ? " networker-maze-item-premium" : ""
+                    }`}
+                    title={
+                      item.kind === "premium"
+                        ? "LinkedIn Premium: momentary speed boost"
+                        : `${item.points} LinkedIn connections`
+                    }
                   >
                     {/* Temporary text marker; replace with the final item visual. */}
-                    in
+                    {item.kind === "premium" ? "★" : "in"}
                   </span>
                 )}
               </div>
@@ -303,7 +410,7 @@ export function NetworkerMaze({
 
         <span
           ref={playerTokenRef}
-          className="networker-maze-player networker-maze-player-token"
+          className={`networker-maze-player networker-maze-player-token networker-maze-player-self${seatColorClassName(mySeat)}`}
           aria-label="You"
         />
 
@@ -322,7 +429,7 @@ export function NetworkerMaze({
                 remoteTokensRef.current.delete(player.username)
               }
             }}
-            className="networker-maze-player networker-maze-player-token networker-maze-player-remote"
+            className={`networker-maze-player networker-maze-player-token${seatColorClassName(player.seat)}`}
             aria-label={player.username}
             title={player.username}
           />
@@ -331,14 +438,28 @@ export function NetworkerMaze({
 
       <p className="networker-maze-legend">
         <span className="networker-maze-legend-item">
-          <span className="networker-maze-player" aria-hidden="true" /> You
+          <span
+            className={`networker-maze-player networker-maze-player-self${seatColorClassName(mySeat)}`}
+            aria-hidden="true"
+          />{" "}
+          You
         </span>
-        <span className="networker-maze-legend-item">
-          <span className="networker-maze-player networker-maze-player-remote" aria-hidden="true" /> Other players
-        </span>
+        {otherPlayers.map((player) => (
+          <span className="networker-maze-legend-item" key={player.username}>
+            <span
+              className={`networker-maze-player${seatColorClassName(player.seat)}`}
+              aria-hidden="true"
+            />{" "}
+            {player.username}
+          </span>
+        ))}
         <span className="networker-maze-legend-item">
           <span className="networker-maze-item" aria-hidden="true">in</span>
           LinkedIn connection
+        </span>
+        <span className="networker-maze-legend-item">
+          <span className="networker-maze-item networker-maze-item-premium" aria-hidden="true">★</span>
+          LinkedIn Premium (speed boost)
         </span>
       </p>
     </section>
