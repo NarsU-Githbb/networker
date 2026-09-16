@@ -656,7 +656,7 @@ socket.on("launch_game_session", (callback) => {
 
   // Seed the authoritative Networker game state from the real room roster
   // and broadcast it so /game doesn't render placeholder players/scores.
-  const networkerState = startNetworkerGame(foundRoom.sessionId, foundRoom.players);
+  const networkerState = startNetworkerGame(io, foundRoom.sessionId, foundRoom.players);
   io.to(foundRoom.sessionId).emit("game_state_updated", networkerState);
 });
 }
