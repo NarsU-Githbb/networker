@@ -26,9 +26,9 @@ export function NetworkerMaze() {
       <div
         className="networker-maze"
         style={{
-          // Temporary visual tile size. The engine may later calculate this
-          // from the viewport and use it to convert row/col into pixels.
-          gridTemplateColumns: `repeat(${NETWORKER_MAP[0].length}, 32px)`,
+          // The CSS variable scales the map for the viewport. Person 3 can
+          // later share this tile size with the movement/rendering engine.
+          gridTemplateColumns: `repeat(${NETWORKER_MAP[0].length}, var(--networker-maze-tile-size))`,
         }}
       >
         {NETWORKER_MAP.flatMap((mapRow, row) =>
