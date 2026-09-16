@@ -1,11 +1,12 @@
 import { Server, Socket } from "socket.io";
 import { tokenRandomizer } from "../utils/randomizer.js";
+import { startNetworkerGame } from "./networkerSock.js";
 
 
 /*need this customsocket here in a case of player disconnects - it will indentify which 
 lobby a disconnected/reconnecting player belongs to. */
 
-interface CustomSocket extends Socket {
+export interface CustomSocket extends Socket {
   username?: string;
   roomId?: string;
 }
@@ -652,5 +653,10 @@ socket.on("launch_game_session", (callback) => {
   io.to(foundRoom.sessionId).emit("game_started", {
     roomId: foundRoom.sessionId,
   });
+
+  // Seed the authoritative Networker game state from the real room roster
+  // and broadcast it so /game doesn't render placeholder players/scores.
+  const networkerState = startNetworkerGame(foundRoom.sessionId, foundRoom.players);
+  io.to(foundRoom.sessionId).emit("game_state_updated", networkerState);
 });
 }

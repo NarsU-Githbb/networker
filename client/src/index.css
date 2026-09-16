@@ -391,11 +391,20 @@
 
 .networker-maze {
 	--networker-maze-tile-size: clamp(26px, 2.5vw, 40px);
+	position: relative;
 	display: grid;
 	width: max-content;
 	max-width: 100%;
 	margin: 0 auto;
 	overflow: hidden;
+}
+
+.networker-maze-player-token {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 2;
+  pointer-events: none;
 }
 
 .networker-maze-tile {
@@ -435,6 +444,11 @@
 	height: 23px;
 	border: 3px solid #ef785f;
 	background: #ef785f66;
+}
+
+.networker-maze-player-remote {
+  border-color: #5b9bef;
+  background: #5b9bef66;
 }
 
 .networker-maze-legend {

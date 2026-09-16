@@ -1,3 +1,5 @@
+import { NETWORKER_PLAYER_START } from './networker-map';
+
 // Game rules
 export const WINNING_SCORE = 100;
 export const MIN_CONNECTION_POINTS = 2;
@@ -10,6 +12,11 @@ export type GamePhase = 'lobby' | 'playing' | 'paused' | 'ended';
 export type NetworkerPlayer = {
 	username: string;
 	score: number;
+	// Current maze cell, in the same row/col grid as NetworkerConnectionItem.
+	// Server-authoritative; the game engine only reads this for players other
+	// than the local one, since local movement renders from its own rAF state.
+	row: number;
+	col: number;
 };
 
 // Describes one Linkedin connection item on the map
@@ -44,10 +51,10 @@ export function createInitialNetworkerState(): NetworkerGameState {
 		// Temporary local placeholders. Person 1 will provide the real room
 		// players when the server sends the first approved game state.
 		players: [
-			{ username: 'Player 1', score: 0 },
-			{ username: 'Player 2', score: 0 },
-			{ username: 'Player 3', score: 0 },
-			{ username: 'Player 4', score: 0 },
+			{ username: 'Player 1', score: 0, ...NETWORKER_PLAYER_START },
+			{ username: 'Player 2', score: 0, ...NETWORKER_PLAYER_START },
+			{ username: 'Player 3', score: 0, ...NETWORKER_PLAYER_START },
+			{ username: 'Player 4', score: 0, ...NETWORKER_PLAYER_START },
 		],
 		// Temporary sample items for the prototype. Person 2 owns the spawn rules;
 		// the server will eventually provide the authoritative item state.
