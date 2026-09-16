@@ -54,6 +54,7 @@ function getActiveDirection(pressOrder: string[]) {
 const DASH_KEY = " "
 const DASH_TILE_COUNT = 3
 const DASH_COOLDOWN_MS = 2000
+const PAUSE_KEY = "p"
 
 // The rendered tile size is a CSS clamp() that scales with viewport width
 // (see --networker-maze-tile-size in index.css), so it can't be a constant -
@@ -100,9 +101,11 @@ function applyAnimationFrame(
 export function NetworkerMaze({
   socket,
   localUsername,
+  roomId,
 }: {
   socket: Socket
   localUsername: string
+  roomId: string
 }) {
   // The maze reads item state from Zustand, but does not award points or mark
   // items as collected. Those rules belong to the authoritative game state.
@@ -110,6 +113,7 @@ export function NetworkerMaze({
     (state) => state.gameState.connectionItems,
   )
   const players = useNetworkerStore((state) => state.gameState.players)
+  const phase = useNetworkerStore((state) => state.gameState.phase)
   // Seat = stable position in the room's player list, assigned once at
   // match start (createNetworkerState) and never reordered - used for both
   // spawn corner and color, so they stay in sync across every client.
@@ -204,6 +208,20 @@ export function NetworkerMaze({
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
+    
+
+  if (event.key === PAUSE_KEY) {
+    if (event.repeat) return
+
+    event.preventDefault()
+
+    if (phase === "playing") {
+      socket.emit("pause_game",{ roomId })
+    }
+
+    return
+  }
+
       if (event.key === DASH_KEY) {
         if (event.repeat) return
         // Stop page scroll / button activation; the tick loop below is what
@@ -240,7 +258,7 @@ export function NetworkerMaze({
       window.removeEventListener("keydown", handleKeyDown)
       window.removeEventListener("keyup", handleKeyUp)
     }
-  }, [])
+  }, [[socket, roomId, phase]])
 
   useEffect(() => {
     let frameId: number

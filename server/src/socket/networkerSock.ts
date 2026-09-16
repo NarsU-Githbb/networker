@@ -63,6 +63,23 @@ export function handleGame(io: Server, socket: CustomSocket) {
     socket.emit("game_state_updated", state);
   });
 
+  socket.on("pause_game", ({ roomId }: { roomId: string }) => {
+     const state = gameStates.get(roomId);
+
+       if (!state) return;
+  if (state.phase !== "playing") return;
+
+  const nextState: NetworkerGameState = {
+    ...state,
+    phase: "paused",
+    systemMessage: "The game has been paused.",
+  };
+
+  gameStates.set(roomId, nextState);
+io.to(roomId).emit("game_state_updated", nextState) 
+
+  })
+
   socket.on("collect_item", ({ itemId }: { itemId: string }) => {
     const roomId = socket.roomId;
     const username = socket.username;
@@ -101,3 +118,5 @@ export function handleGame(io: Server, socket: CustomSocket) {
     socket.to(roomId).emit("player_moved", { username, row, col });
   });
 }
+
+

@@ -11,13 +11,18 @@ export function NetworkerOverlay() {
 		(state) => state.gameState.systemMessage,
 	);
 
-    //Keep the maze unobstructed during the lobby and active gameplay.
-    //Anssi's backend will update the phase through Socket.IO.
-	if (phase != 'paused' && phase !== 'ended') {
-		return null;
-	}
+ const isPaused = phase === 'paused'
+  const isEnded = phase === 'ended'
 
-	const isPaused = phase === 'paused';
+// Temporary debug trigger
+  if (isPaused) {
+    console.log('PAUSE IS WORKING — phase:', phase)
+  }
+
+  if (!isPaused && !isEnded) {
+    return null
+  }
+
 
 	return (
 		<div

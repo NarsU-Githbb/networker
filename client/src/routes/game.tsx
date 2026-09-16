@@ -42,7 +42,7 @@ function Game() {
   return (
     <main className="networker-page">
       <div className="networker-game-layout">
-        <NetworkerMaze socket={socket} localUsername={username} />
+        <NetworkerMaze socket={socket} localUsername={username} roomId={roomId} />
         <aside className="networker-sidebar" aria-label="Match information">
           <NetworkerHud />
         </aside>
