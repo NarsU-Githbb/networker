@@ -34,12 +34,15 @@ export type NetworkerConnectionItem = {
 	kind: NetworkerItemKind;
 };
 
-// Full game snapshot i.e phase, players, collectibles conns, winner.
+// Client mirror of the server-approved match snapshot.
 export type NetworkerGameState = {
 	phase: GamePhase;
+	leadUsername: string | null;
 	players: NetworkerPlayer[];
 	connectionItems: NetworkerConnectionItem[];
 	winnerUsername: string | null;
+	// Server-authoritative elapsed match time, measured in whole seconds.
+	elapsedTime: number;
 	systemMessage: string | null;
 };
 
@@ -48,11 +51,13 @@ export const winMessages = [
 	'Your future is bright, you got a junior position in your favorite company!',
 ];
 
-// Initial State Func.
+// Local fallback state used until the first server snapshot arrives.
 export function createInitialNetworkerState(): NetworkerGameState {
 	return {
-		phase: 'lobby',
+		phase: 'playing',
+		leadUsername: null,
 		winnerUsername: null,
+		elapsedTime: 0,
 		systemMessage: 'Collect 100 LinkedIn connections before everyone else.',
 		// Temporary local placeholders. Person 1 will provide the real room
 		// players when the server sends the first approved game state.
