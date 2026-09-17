@@ -1,5 +1,5 @@
-import { createFileRoute } from '@tanstack/react-router'
-import { useEffect } from 'react'
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { useEffect, useState } from 'react'
 import * as z from 'zod'
 import { NetworkerHud } from '@/components/networker/NetworkerHud'
 import { NetworkerMaze } from '@/components/networker/NetworkerMaze'
@@ -20,10 +20,12 @@ export const Route = createFileRoute('/game')({
 function Game() {
   const { socket } = Route.useRouteContext()
   const { roomId, username } = Route.useSearch()
+  const navigate = useNavigate()
+  const [rematchError, setRematchError] = useState<string | null>(null)
   const setGameState = useNetworkerStore((state) => state.setGameState)
 
-  // The server is authoritative: it applies collect_item, decides scores and
-  // the winner, then broadcasts the approved state for every client to render.
+  // The server is authoritative: it applies collection events, decides scores,
+  // the winner, and elapsed time, then broadcasts the approved snapshot.
   useEffect(() => {
     const handleGameStateUpdated = (gameState: NetworkerGameState) => {
       setGameState(gameState)
@@ -39,6 +41,33 @@ function Game() {
     }
   }, [socket, roomId, setGameState])
 
+  useEffect(() => {
+    const handleReturnToLobby = () => {
+      navigate({ to: '/lobby', search: { roomId, username } })
+    }
+
+    socket.on('return_to_lobby', handleReturnToLobby)
+    return () => socket.off('return_to_lobby', handleReturnToLobby)
+  }, [navigate, roomId, socket, username])
+
+  const handlePlayAgain = () => {
+    setRematchError(null)
+    socket.timeout(5000).emit(
+      'play_again',
+      (error: Error | null, response?: { success: boolean; error?: string }) => {
+        if (error) {
+          setRematchError('The server did not respond. Please restart the server and try again.')
+          return
+        }
+
+        if (!response?.success) {
+          setRematchError(response?.error ?? 'Unable to start another game.')
+          return
+        }
+      },
+    )
+  }
+
   return (
     <main className="networker-page">
       <div className="networker-game-layout">
@@ -47,7 +76,11 @@ function Game() {
           <NetworkerHud />
         </aside>
 
-        <NetworkerOverlay />
+        <NetworkerOverlay
+          localUsername={username}
+          onPlayAgain={handlePlayAgain}
+          rematchError={rematchError}
+        />
       </div>
     </main>
   )

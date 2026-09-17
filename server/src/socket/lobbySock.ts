@@ -1,6 +1,9 @@
 import { Server, Socket } from "socket.io";
 import { tokenRandomizer } from "../utils/randomizer.js";
-import { startNetworkerGame } from "./networkerSock.js";
+import {
+  getNetworkerGameState,
+  startNetworkerGame,
+} from "./networkerSock.js";
 
 
 /*need this customsocket here in a case of player disconnects - it will indentify which 
@@ -579,6 +582,52 @@ if (existingPlayer.username === foundRoom.leadPlayer.username) {
     });
   }
 );
+
+// Returns every current player to the same lobby so the lead player can
+// launch a fresh match without creating a new room.
+socket.on("play_again", (callback: (response: { success: boolean; error?: string }) => void) => {
+  const roomId = socket.roomId;
+  if (!roomId) {
+    callback({ success: false, error: "You are not in a room." });
+    return;
+  }
+
+  const foundRoom = activeRooms.find((room) => room.sessionId === roomId);
+  if (!foundRoom) {
+    callback({ success: false, error: "Room not found." });
+    return;
+  }
+
+  if (foundRoom.leadPlayer.connectionId !== socket.id) {
+    callback({ success: false, error: "Only the lead player can start a rematch." });
+    return;
+  }
+
+  // The gameplay state is authoritative for the match result. The lobby state
+  // can still say "playing" because it is maintained separately.
+  const networkerState = getNetworkerGameState(roomId);
+  if (networkerState?.phase !== "ended") {
+    callback({ success: false, error: "The current game has not ended." });
+    return;
+  }
+
+  foundRoom.gameState = "lobby";
+  foundRoom.expiresAt = Date.now() + 10 * 60 * 1000;
+
+  io.to(roomId).emit("return_to_lobby", { roomId });
+  foundRoom.players.forEach((player) => {
+    io.to(player.connectionId).emit("lobby_state", {
+      playerCount: foundRoom.players.length,
+      maxPlayers: foundRoom.maxPlayers,
+      teamLead: player.username === foundRoom.leadPlayer.username,
+      liveState: foundRoom.liveState,
+      gameState: foundRoom.gameState,
+      expiresAt: foundRoom.expiresAt,
+    });
+  });
+
+  callback({ success: true });
+});
 // ----------------------------------------
   // 2. GAME LAUCH 
   // ----------------------------------------
@@ -656,7 +705,12 @@ socket.on("launch_game_session", (callback) => {
 
   // Seed the authoritative Networker game state from the real room roster
   // and broadcast it so /game doesn't render placeholder players/scores.
-  const networkerState = startNetworkerGame(io, foundRoom.sessionId, foundRoom.players);
+  const networkerState = startNetworkerGame(
+    io,
+    foundRoom.sessionId,
+    foundRoom.players,
+    foundRoom.leadPlayer.username,
+  );
   io.to(foundRoom.sessionId).emit("game_state_updated", networkerState);
 });
 }
