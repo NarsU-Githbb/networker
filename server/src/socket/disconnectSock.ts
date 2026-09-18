@@ -32,11 +32,6 @@ export function handleSocketDisconnect(
     return;
   }
 
-  console.log("[disconnect] Starting 30s removal timer", {
-    username: player.username,
-    roomId,
-    socketId: socket.id,
-  });
 
 
 /* add 30 second disconnect timer so that player doesn't get disconnected immidiately if 
@@ -59,11 +54,6 @@ their internet connection cuts for a second or two for example.
     if (!currentPlayer) {
       return;
     }
-
-    console.log("[disconnect] Removing player after timeout", {
-      username: currentPlayer.username,
-      roomId,
-    });
 
     removePlayerFromRoom(currentRoom, socket, io);
   }, 30_000);

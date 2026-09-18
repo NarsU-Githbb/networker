@@ -127,43 +127,6 @@ export function handleGame(io: Server, socket: CustomSocket) {
     socket.emit("game_state_updated", state);
   });
 
- /* socket.on("pause_game", ({ roomId }: { roomId: string }) => {
-     const state = gameStates.get(roomId);
-
-       if (!state) return;
-  if (state.phase !== "playing") return;
-
-  const nextState: NetworkerGameState = {
-    ...state,
-    phase: "paused",
-    systemMessage: "The game has been paused.",
-  };
-
-  gameStates.set(roomId, nextState);
-io.to(roomId).emit("game_state_updated", nextState) 
-
-  })
-
-
-  socket.on("quit_game", (callback) => {
-const foundRoom = activeRooms.find(
-    (room) => room.sessionId === socket.roomId
-  );
-
-  if (!foundRoom) {
-      callback({
-      success: false,
-      error: "Room not found.",
-    });
-    return;
-  }
-  removePlayerFromRoom(foundRoom, socket, io);
-
-  callback({
-    success: true,
-  });
-}); */
-
   socket.on("collect_item", ({ itemId }: { itemId: string }) => {
     const roomId = socket.roomId;
     const username = socket.username;
@@ -272,6 +235,15 @@ socket.on("quit_game", (callback) => {
     success: true,
   });
 });
+
+// On your backend socket server file:
+socket.on("trigger_chat", (data: { roomId: string }) => {
+  
+// Broadcast a command to all 4 players in the room to move to the chat
+
+io.to(data.roomId).emit("navigate_to_chat");
+});
+
 
   // Fires far more often than collect_item (roughly once per grid step), so
   // it stays a small standalone broadcast instead of resending the whole

@@ -80,6 +80,7 @@ function Game() {
         <NetworkerOverlay
           localUsername={username}
           socket={socket}
+          roomId={roomId}
           onPlayAgain={handlePlayAgain}
           rematchError={rematchError}
         />

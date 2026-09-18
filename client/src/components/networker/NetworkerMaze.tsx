@@ -131,6 +131,18 @@ export function NetworkerMaze({
   const dashRequestedRef = useRef(false)
   const lastDashTimeRef = useRef(-Infinity)
   const speedBoostUntilRef = useRef(-Infinity)
+  const phaseRef = useRef(phase)
+
+useEffect(() => {
+  phaseRef.current = phase
+}, [phase])
+
+useEffect(() => {
+  if (phase !== "playing") {
+    heldKeysRef.current = []
+    dashRequestedRef.current = false
+  }
+}, [phase])
 
   // Seed the local player's own cell from the store's authoritative spawn
   // position the first time it's available, instead of assuming everyone
@@ -270,7 +282,7 @@ export function NetworkerMaze({
         const token = playerTokenRef.current
 
         // Idle: try to start a move toward whichever held direction is walkable.
-        if (!animationRef.current && token) {
+        if (phaseRef.current === "playing" && !animationRef.current && token) {
           const direction = getActiveDirection(heldKeysRef.current)
 
           // The dash key is consumed the moment it's checked (whether or not
@@ -369,7 +381,7 @@ export function NetworkerMaze({
 
     frameId = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(frameId)
-  }, [socket])
+  }, [socket, phase])
 
   return (
     <section className="networker-maze-section" aria-label="Networker maze">

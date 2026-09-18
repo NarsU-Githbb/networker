@@ -657,6 +657,7 @@ socket.on("launch_game_session", (callback) => {
 
   // Tell EVERYONE in the room that game has started (not sure if this goes to lobby or game route?)
 
+  //--> is this used
   io.to(foundRoom.sessionId).emit("game_started", {
     roomId: foundRoom.sessionId,
   });

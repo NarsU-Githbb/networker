@@ -7,12 +7,14 @@ export function NetworkerOverlay( {
 	localUsername,
 	onPlayAgain,
 	rematchError,
-	socket
+	socket,
+	roomId,
 }: {
 	localUsername: string;
 	onPlayAgain: () => void;
 	rematchError: string | null;
-	socket: string
+	socket: any;
+	roomId: string;
 }) {
  
 const navigate = useNavigate();
@@ -20,6 +22,36 @@ const navigate = useNavigate();
 const gameResume = () => {
 socket.emit("resume_game")
 }
+
+const openChat = () => {
+  if (!roomId) {
+    console.error("Cannot open chat: Room ID missing.");
+    return;
+  }
+
+  socket.emit("trigger_chat", { roomId });
+};
+
+useEffect(() => {
+  if (!socket || !roomId) return;
+
+  const handleChatRedirect = () => {
+    navigate({ 
+      to: "/chat",
+      search: {
+        roomId: roomId,
+        username: localUsername 
+      }
+    });
+  };
+
+  socket.on("navigate_to_chat", handleChatRedirect);
+
+  return () => {
+    socket.off("navigate_to_chat", handleChatRedirect);
+  };
+}, [socket, roomId, navigate, localUsername]);
+
 
 const gameQuit = () => {
 socket.emit("quit_game", (response: { success: boolean; error?: string }) => {
@@ -88,6 +120,11 @@ useEffect(() => {
 					Resume game 
 					</button>
 
+{isLead ? (
+					<button type="button" className="transition-colors duration-200 outline-none hover:text-gray-500 focus-visible:text-gray-900 font-medium p-2" onClick={openChat}>
+					Open After Game Chat
+					</button>
+) : null}
 					<button type="button" className="transition-colors duration-200 outline-none hover:text-gray-500 focus-visible:text-gray-900 font-medium p-2" onClick={gameQuit}>
 					Quit game
 					</button>
@@ -103,6 +140,7 @@ useEffect(() => {
 							: 'Sorry, we are not hiring junior developers right now.'}
 					</p>
 					{isLead ? (
+						<>
 						<button
 							className="networker-overlay-action"
 							type="button"
@@ -111,6 +149,16 @@ useEffect(() => {
 							<RotateCcw size={18} aria-hidden="true" />
 							Play Again
 						</button>
+
+							<button
+							className="networker-overlay-action"
+							type="button"
+							onClick={openChat}
+						>
+							<RotateCcw size={18} aria-hidden="true" />
+							Open After Game Chat
+						</button>
+						</>
 					) : (
 						<p>Waiting for the lead player to start another game.</p>
 					)}
