@@ -202,23 +202,13 @@ const foundRoom = activeRooms.find(
     io.to(roomId).emit("game_state_updated", nextState);
   });
 
-  socket.on("resume_game", (callback) => {
+  socket.on("resume_game", () => {
     const roomId = socket.roomId;
     const username = socket.username;
-    if (!roomId || !username)
-      callback({
-    success: false,
-    error: "Missing room or username."
-  });
-      return;
+    if (!roomId || !username) return;;
 
     const state = gameStates.get(roomId);
-    if (!state || state.phase !== "paused")
-      callback({
-    success: false,
-    error: "Game not found or not paused."
-  });
-      return;
+    if (!state || state.phase !== "paused") return;
 
     const nextState = {
       ...state,
@@ -229,11 +219,6 @@ const foundRoom = activeRooms.find(
     startElapsedTimer(io, roomId);
     startItemRespawnTimer(io, roomId);
     io.to(roomId).emit("game_state_updated", nextState);
-
-callback({
-    success: true,
-  });
-
   });
 
 socket.on("quit_game", (callback) => {
@@ -274,11 +259,6 @@ socket.on("quit_game", (callback) => {
   const isLead =
     player.connectionId === room.leadPlayer.connectionId;
 
-  console.log("[quit_game]", {
-    username: player.username,
-    roomId,
-    isLead,
-  });
 
   if (isLead) {
     // Lead quits → destroy the entire room.

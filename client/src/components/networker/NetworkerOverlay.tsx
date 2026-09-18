@@ -16,14 +16,10 @@ export function NetworkerOverlay( {
 }) {
  
 const navigate = useNavigate();
+
 const gameResume = () => {
-socket.emit("resume_game", (response: { success: boolean; error?: string }) => {
-if (!response.success) {
-	console.error(response.error);
-} 
-  });
-};
- 
+socket.emit("resume_game")
+}
 
 const gameQuit = () => {
 socket.emit("quit_game", (response: { success: boolean; error?: string }) => {
