@@ -47,7 +47,7 @@ function Game() {
           <NetworkerHud />
         </aside>
 
-        <NetworkerOverlay />
+        <NetworkerOverlay localUsername={username} />
       </div>
     </main>
   )
