@@ -102,9 +102,12 @@ export type NetworkerConnectionItem = {
 
 export type NetworkerGameState = {
   phase: GamePhase;
+  leadUsername: string;
   players: NetworkerPlayer[];
   connectionItems: NetworkerConnectionItem[];
   winnerUsername: string | null;
+  // Server-authoritative elapsed match time, measured in whole seconds.
+  elapsedTime: number;
   systemMessage: string | null;
 };
 
@@ -126,10 +129,13 @@ const INITIAL_CONNECTION_ITEMS: NetworkerConnectionItem[] = [
 // launches the match.
 export function createNetworkerState(
   players: { username: string }[],
+  leadUsername: string,
 ): NetworkerGameState {
   return {
     phase: "playing",
+    leadUsername,
     winnerUsername: null,
+    elapsedTime: 0,
     systemMessage: "Collect 100 LinkedIn connections before everyone else.",
     players: players.map((player, seat) => ({
       username: player.username,
