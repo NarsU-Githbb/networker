@@ -1,4 +1,4 @@
-import { getSpawnPoint } from './networker-map';
+import { getSpawnPoint, type NetworkerMapId } from './networker-map';
 
 // Game rules
 export const WINNING_SCORE = 100;
@@ -38,6 +38,7 @@ export type NetworkerConnectionItem = {
 export type NetworkerGameState = {
 	phase: GamePhase;
 	leadUsername: string | null;
+	mapId: NetworkerMapId;
 	players: NetworkerPlayer[];
 	connectionItems: NetworkerConnectionItem[];
 	winnerUsername: string | null;
@@ -56,6 +57,7 @@ export function createInitialNetworkerState(): NetworkerGameState {
 	return {
 		phase: 'playing',
 		leadUsername: null,
+		mapId: 'classic',
 		winnerUsername: null,
 		elapsedTime: 0,
 		systemMessage: 'Collect 100 LinkedIn connections before everyone else.',

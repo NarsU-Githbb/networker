@@ -9,33 +9,61 @@ export const WINNING_SCORE = 100;
 export const MIN_CONNECTION_POINTS = 1;
 export const MAX_CONNECTION_POINTS = 2;
 
-// Mirrors client/src/lib/networker-map.ts's NETWORKER_MAP - needed here so
-// random item spawns can be checked against walls without duplicating the
-// whole client library on the server.
-const NETWORKER_MAP = [
-  "#############",
-  "#     #     #",
-  "# ### # ### #",
-  "# #       # #",
-  "# # ##### # #",
-  "#   #   #   #",
-  "### # # # ###",
-  "#   #   #   #",
-  "# # ##### # #",
-  "# #       # #",
-  "# ### # ### #",
-  "#     #     #",
-  "#############",
-];
+// Keep the server catalog in sync with client/src/lib/networker-map.ts. The
+// server selects the mapId and uses the selected layout for item spawning.
+const NETWORKER_MAPS = {
+	classic: [
+		"#############", "#     #     #", "# ### # ### #", "# #       # #",
+		"# # ##### # #", "#   #   #   #", "### # # # ###", "#   #   #   #",
+		"# # ##### # #", "# #       # #", "# ### # ### #", "#     #     #",
+		"#############",
+	],
+	crossroads: [
+		"#############", "#     #     #", "# ###   ### #", "# #       # #",
+		"# # ##### # #", "#   #     # #", "### # ### # #", "# # #     # #",
+		"# # ##### # #", "# #       # #", "# ###   ### #", "#     #     #",
+		"#############",
+	],
+	zigzag: [
+		"#############", "#   #       #", "# # # ##### #", "# # #       #",
+		"# # ##### # #", "# #   #   # #", "# ### # # # #", "#   # # #   #",
+		"# # # ##### #", "# # #       #", "# # ##### # #", "#       #   #",
+		"#############",
+	],
+	loops: [
+		"#############", "#     #     #", "# ### # ### #", "#   #   #   #",
+		"### ##### ###", "#     #     #", "# ### # ### #", "# #   #   # #",
+		"# # ####### #", "# #         #", "# ######### #", "#           #",
+		"#############",
+	],
+	weave: [
+		"#############", "#   #   #   #", "# # # # # # #", "# #     #   #",
+		"# ##### ### #", "#     #     #", "# ### ##### #", "#   #     # #",
+		"# # ### # # #", "# #   # #   #", "# ### # ### #", "#     #     #",
+		"#############",
+	],
+} as const;
 
-function isWalkableTile(row: number, col: number): boolean {
-  return NETWORKER_MAP[row]?.[col] === " ";
+type NetworkerMapId = keyof typeof NETWORKER_MAPS;
+const NETWORKER_MAP_IDS = Object.keys(NETWORKER_MAPS) as NetworkerMapId[];
+
+function getNetworkerMap(mapId: NetworkerMapId): readonly string[] {
+	return NETWORKER_MAPS[mapId] ?? NETWORKER_MAPS.classic;
 }
 
-// Flood-fills from a spawn corner so fully enclosed floor pockets (walkable
-// tiles with no doorway in) are excluded - items must only spawn where a
-// player can actually walk to collect them.
-function findReachableCells(start: { row: number; col: number }): { row: number; col: number }[] {
+function isWalkableTile(
+	map: readonly string[],
+	row: number,
+	col: number,
+): boolean {
+	return map[row]?.[col] === " ";
+}
+
+// Flood-fills from a spawn corner so items only appear in reachable areas.
+function findReachableCells(
+	map: readonly string[],
+	start: { row: number; col: number },
+): { row: number; col: number }[] {
   const visited = new Set<string>([`${start.row},${start.col}`]);
   const queue = [start];
   const reachable: { row: number; col: number }[] = [];
@@ -49,7 +77,7 @@ function findReachableCells(start: { row: number; col: number }): { row: number;
       const nextRow = cell.row + deltaRow;
       const nextCol = cell.col + deltaCol;
       const key = `${nextRow},${nextCol}`;
-      if (isWalkableTile(nextRow, nextCol) && !visited.has(key)) {
+      if (isWalkableTile(map, nextRow, nextCol) && !visited.has(key)) {
         visited.add(key);
         queue.push({ row: nextRow, col: nextCol });
       }
@@ -58,8 +86,6 @@ function findReachableCells(start: { row: number; col: number }): { row: number;
 
   return reachable;
 }
-
-const WALKABLE_CELLS = findReachableCells({ row: 1, col: 1 });
 
 export type GamePhase = "lobby" | "playing" | "paused" | "ended";
 
@@ -103,6 +129,7 @@ export type NetworkerConnectionItem = {
 export type NetworkerGameState = {
   phase: GamePhase;
   leadUsername: string;
+  mapId: NetworkerMapId;
   players: NetworkerPlayer[];
   connectionItems: NetworkerConnectionItem[];
   winnerUsername: string | null;
@@ -111,19 +138,29 @@ export type NetworkerGameState = {
   systemMessage: string | null;
 };
 
-// Same layout as client/src/lib/networker-map.ts's NETWORKER_MAP, so item
-// row/col values line up with walkable floor tiles in the maze.
-const INITIAL_CONNECTION_ITEMS: NetworkerConnectionItem[] = [
-  { itemId: "c1", row: 1, col: 3, points: 1, isCollected: false, kind: "connection" },
-  { itemId: "c2", row: 1, col: 9, points: 2, isCollected: false, kind: "connection" },
-  { itemId: "c3", row: 3, col: 1, points: 1, isCollected: false, kind: "connection" },
-  { itemId: "c4", row: 3, col: 7, points: 2, isCollected: false, kind: "connection" },
-  { itemId: "c5", row: 5, col: 1, points: 1, isCollected: false, kind: "connection" },
-  { itemId: "c6", row: 5, col: 9, points: 2, isCollected: false, kind: "connection" },
-  { itemId: "c7", row: 7, col: 3, points: 1, isCollected: false, kind: "connection" },
-  { itemId: "c8", row: 9, col: 7, points: 2, isCollected: false, kind: "connection" },
-  { itemId: "c9", row: 11, col: 9, points: 1, isCollected: false, kind: "connection" },
-];
+function createInitialConnectionItems(
+  mapId: NetworkerMapId,
+): NetworkerConnectionItem[] {
+  const map = getNetworkerMap(mapId);
+  const spawnKeys = new Set(SPAWN_POINTS.map((point) => `${point.row},${point.col}`));
+  const cells = findReachableCells(map, { row: 1, col: 1 }).filter(
+    (cell) => !spawnKeys.has(`${cell.row},${cell.col}`),
+  );
+
+  return Array.from({ length: 9 }, (_, index) => {
+    const cell = cells[Math.floor((index * cells.length) / 9)];
+    if (!cell) throw new Error(`Map ${mapId} does not have enough item cells`);
+
+    return {
+      itemId: `c${index + 1}`,
+      row: cell.row,
+      col: cell.col,
+      points: index % 2 === 0 ? 1 : 2,
+      isCollected: false,
+      kind: "connection" as const,
+    };
+  });
+}
 
 // Builds the starting state for a real room's players once the lobby lead
 // launches the match.
@@ -131,9 +168,13 @@ export function createNetworkerState(
   players: { username: string }[],
   leadUsername: string,
 ): NetworkerGameState {
+  const mapId = NETWORKER_MAP_IDS[Math.floor(Math.random() * NETWORKER_MAP_IDS.length)];
+  if (!mapId) throw new Error("No Networker maps are configured");
+
   return {
     phase: "playing",
     leadUsername,
+    mapId,
     winnerUsername: null,
     elapsedTime: 0,
     systemMessage: "Collect 100 LinkedIn connections before everyone else.",
@@ -142,7 +183,7 @@ export function createNetworkerState(
       score: 0,
       ...getSpawnPoint(seat),
     })),
-    connectionItems: INITIAL_CONNECTION_ITEMS.map((item) => ({ ...item })),
+    connectionItems: createInitialConnectionItems(mapId),
   };
 }
 
@@ -202,7 +243,10 @@ export function spawnRandomItem(state: NetworkerGameState): NetworkerGameState {
       .filter((item) => !item.isCollected)
       .map((item) => `${item.row},${item.col}`),
   );
-  const emptyCells = WALKABLE_CELLS.filter((cell) => !occupied.has(`${cell.row},${cell.col}`));
+  const map = getNetworkerMap(state.mapId);
+  const emptyCells = findReachableCells(map, { row: 1, col: 1 }).filter(
+    (cell) => !occupied.has(`${cell.row},${cell.col}`),
+  );
   if (emptyCells.length === 0) return state;
 
   const cell = emptyCells[Math.floor(Math.random() * emptyCells.length)];
