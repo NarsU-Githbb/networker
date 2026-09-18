@@ -4,6 +4,7 @@ import * as z from 'zod'
 import { NetworkerHud } from '@/components/networker/NetworkerHud'
 import { NetworkerMaze } from '@/components/networker/NetworkerMaze'
 import { NetworkerOverlay } from '@/components/networker/NetworkerOverlay'
+import { NetworkerSoundEffects } from '@/components/networker/NetworkerSoundEffects'
 import { useNetworkerStore } from '@/lib/networker-store'
 import type { NetworkerGameState } from '@/lib/networker-game'
 
@@ -82,6 +83,7 @@ function Game() {
           onPlayAgain={handlePlayAgain}
           rematchError={rematchError}
         />
+        <NetworkerSoundEffects localUsername={username} />
       </div>
     </main>
   )

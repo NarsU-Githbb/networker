@@ -1,5 +1,8 @@
 import { Trophy, Users, Activity, Target } from 'lucide-react';
+import { useLayoutEffect, useMemo, useRef } from 'react';
 import { useNetworkerStore } from '@/lib/networker-store';
+
+const PLAYER_COLORS = ['#ef785f', '#5b9bef', '#7ed957', '#c77dff'];
 
 const phaseLabels = {
 	lobby: 'Lobby',
@@ -30,6 +33,72 @@ export function NetworkerHud() {
 		(highestScore, player) => Math.max(highestScore, player.score),
 		0,
 	);
+
+	// The seat is stable for the match and matches NetworkerMaze's player color.
+	// Scores decide the visible ranking; seat order breaks ties consistently.
+	const rankedPlayers = useMemo(
+		() =>
+			players
+				.map((player, seat) => ({ player, seat }))
+				.sort(
+					(a, b) =>
+						b.player.score - a.player.score || a.seat - b.seat,
+				),
+		[players],
+	);
+	const playerRowRefs = useRef(new Map<string, HTMLDivElement>());
+	const previousRowPositions = useRef(new Map<string, number>());
+	const rowAnimations = useRef(new Map<string, Animation>());
+
+	// FLIP animation: after React reorders the rows, animate each row from its
+	// previous screen position to its new ranking position.
+	useLayoutEffect(() => {
+		const nextPositions = new Map<string, number>();
+		const reduceMotion = window.matchMedia(
+			'(prefers-reduced-motion: reduce)',
+		).matches;
+
+		for (const { player } of rankedPlayers) {
+			const row = playerRowRefs.current.get(player.username);
+			if (!row) continue;
+
+			const nextTop = row.getBoundingClientRect().top;
+			const previousTop = previousRowPositions.current.get(player.username);
+
+			if (
+				previousTop !== undefined &&
+				!reduceMotion &&
+				Math.abs(previousTop - nextTop) > 1
+			) {
+				rowAnimations.current.get(player.username)?.cancel();
+				const animation = row.animate(
+					[
+						{ transform: `translateY(${previousTop - nextTop}px)` },
+						{ transform: 'translateY(0)' },
+					],
+					{
+						duration: 480,
+						easing: 'cubic-bezier(0.16, 1, 0.3, 1)',
+						fill: 'both',
+					},
+				);
+				rowAnimations.current.set(player.username, animation);
+				animation.finished
+					.then(() => {
+						if (rowAnimations.current.get(player.username) === animation) {
+							rowAnimations.current.delete(player.username);
+						}
+					})
+					.catch(() => {
+						// Cancelling an interrupted animation rejects finished.
+					});
+			}
+
+			nextPositions.set(player.username, nextTop);
+		}
+
+		previousRowPositions.current = nextPositions;
+	}, [rankedPlayers]);
 
 	return (
 		<section className="networker-hud-shell" aria-label="Networker game status">
@@ -83,13 +152,24 @@ export function NetworkerHud() {
 				</div>
 
 				<div className="networker-player-list">
-					{players.map((player, index) => {
+					{rankedPlayers.map(({ player, seat }, index) => {
 						// Progress is visual feedback for the 100-connection win target.
 						// It does not update the player's score or game state.
 						const progress = Math.min((player.score / 100) * 100, 100);
+						const playerColor = PLAYER_COLORS[seat % PLAYER_COLORS.length];
 
 						return (
-							<div className="networker-player-row" key={player.username}>
+							<div
+								className="networker-player-row"
+								key={player.username}
+								ref={(row) => {
+									if (row) playerRowRefs.current.set(player.username, row);
+									else playerRowRefs.current.delete(player.username);
+								}}
+								style={{
+									'--networker-player-color': playerColor,
+								} as React.CSSProperties}
+							>
 								<div className="networker-player-rank">{index + 1}</div>
 								<div className="networker-player-details">
 									<div className="networker-player-name">

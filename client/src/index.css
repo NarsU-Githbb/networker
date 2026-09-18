@@ -307,10 +307,13 @@
 }
 
 .networker-player-row {
+	--networker-player-color: #a8c8a0;
+	will-change: transform;
 	display: flex;
 	align-items: center;
 	gap: 14px;
 	padding: 16px 20px;
+	border-left: 4px solid var(--networker-player-color);
 	border-bottom: 1px solid #29382f;
 }
 
@@ -323,9 +326,9 @@
 	place-items: center;
 	width: 28px;
 	height: 28px;
-	border: 1px solid #506a55;
+	border: 1px solid var(--networker-player-color);
 	border-radius: 50%;
-	color: #a8c8a0;
+	color: var(--networker-player-color);
 	font-size: 0.78rem;
 }
 
@@ -355,7 +358,7 @@
 .networker-progress-track span {
 	display: block;
 	height: 100%;
-	background: #a8c8a0;
+	background: var(--networker-player-color);
 	transition: width 180ms ease-out;
 }
 
