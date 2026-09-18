@@ -76,15 +76,12 @@ function Game() {
           <NetworkerHud />
         </aside>
 
-<<<<<<< HEAD
-        <NetworkerOverlay localUsername={username} />
-=======
         <NetworkerOverlay
           localUsername={username}
+          socket={socket}
           onPlayAgain={handlePlayAgain}
           rematchError={rematchError}
         />
->>>>>>> 616b1865188a192700f59008d1733f26044fefde
       </div>
     </main>
   )

@@ -4,6 +4,7 @@ import {
   getNetworkerGameState,
   startNetworkerGame,
 } from "./networkerSock.js";
+import { destroyNetworkerGame } from "./networkerSock.ts"
 
 
 /*need this customsocket here in a case of player disconnects - it will indentify which 
@@ -33,14 +34,16 @@ export interface AddRooms {
 
 //variable for holding all gaming rooms active right now across all the networks
 
-const activeRooms: AddRooms[] = []
+export const activeRooms: AddRooms[] = []
 
-function destroyRoom(room: AddRooms, io: Server) {
+export function destroyRoom(room: AddRooms, io: Server) {
   const index = activeRooms.indexOf(room);
 
   if (index !== -1) {
     activeRooms.splice(index, 1);
   }
+
+destroyNetworkerGame(room.sessionId);
 
   io.to(room.sessionId).emit("lobby_expired");
 
@@ -49,7 +52,7 @@ function destroyRoom(room: AddRooms, io: Server) {
   io.in(room.sessionId).socketsLeave(room.sessionId);
 }
 
-function removePlayerFromRoom(room: AddRooms, socket: CustomSocket, io: Server) {
+export function removePlayerFromRoom(room: AddRooms, socket: CustomSocket, io: Server) {
 
   const playerIndex = room.players.findIndex(
     (player) => player.connectionId === socket.id
@@ -454,16 +457,13 @@ const foundRoom = activeRooms.find((room) => room.sessionId === roomId);
 ACTUAL LOBBY SOCKETS: 
 ----------------------------------------
 
-
-----------------------------------------
-DiSCONNECTING FROM LOBBY 
-----------------------------------------
-
-  list of socket events:
+list of socket events:
 -leaving_lobby = intentional departures (by pressing cancel button in the lobby)
--disconnect = unexpected connection loss (for example closing browser or network disconnection)
 -rejoin_lobby = logic that helps players to rejoin lobby if they disconnect accidentally
+-play_again = Returns every current player to the same lobby so the lead player can launch a fresh match without creating a new room.
+-launch_game_session = launch game from the lobby
 */
+
 
 
 socket.on("leaving_lobby", (callback) => {
@@ -483,41 +483,6 @@ const foundRoom = activeRooms.find(
   callback({
     success: true,
   });
-});
-
-socket.on("disconnect", () => {
-  const foundRoom = activeRooms.find(
-    (room) => room.sessionId === socket.roomId
-  );
-
-  if (!foundRoom) return;
-
-   const player = foundRoom.players.find(
-    (player) => player.connectionId === socket.id
-  );
-
-if (!player) return; 
-
-/* add 30 second disconnect timer so that player doesn't get disconnected immidiately if 
-their internet connection cuts for a second or two for example.
-*/
-
-player.disconnectTimer = setTimeout(() => {
-
-  const currentRoom = activeRooms.find(
-      (room) => room.sessionId === socket.roomId
-    );
-
-    if (!currentRoom) return;
-
-    const currentPlayer = currentRoom.players.find(
-      (player) => player.connectionId === socket.id
-    );
-
-    if (!currentPlayer) return;
-
-    removePlayerFromRoom(currentRoom, socket, io);
-  }, 30_000);
 });
 
 socket.on("rejoin_lobby", (  data: { roomId: string; username: string }, callback) => {
@@ -583,8 +548,6 @@ if (existingPlayer.username === foundRoom.leadPlayer.username) {
   }
 );
 
-// Returns every current player to the same lobby so the lead player can
-// launch a fresh match without creating a new room.
 socket.on("play_again", (callback: (response: { success: boolean; error?: string }) => void) => {
   const roomId = socket.roomId;
   if (!roomId) {
@@ -628,11 +591,6 @@ socket.on("play_again", (callback: (response: { success: boolean; error?: string
 
   callback({ success: true });
 });
-// ----------------------------------------
-  // 2. GAME LAUCH 
-  // ----------------------------------------
-
-
 
 socket.on("launch_game_session", (callback) => {
   const roomId = socket.roomId;

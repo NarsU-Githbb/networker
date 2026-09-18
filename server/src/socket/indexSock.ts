@@ -2,6 +2,7 @@ import { Server, Socket } from "socket.io";
 import { handleLobby } from "./lobbySock.js";
 import { handleChat } from "./chatSock.js";
 import { handleGame } from "./networkerSock.js";
+import { handleSocketDisconnect } from "./disconnectSock.js";
 
 export const initializeSocketRouter = (io: Server): void => {
   io.on("connection", (socket: Socket): void => {
@@ -14,6 +15,8 @@ export const initializeSocketRouter = (io: Server): void => {
 
     socket.on("disconnect", () => {
       console.log(`[socket] User disconnected: ${socket.id}`);
+
+       handleSocketDisconnect(io, socket);
     });
   });
 };

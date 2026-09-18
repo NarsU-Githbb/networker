@@ -1,5 +1,10 @@
 import { Server } from "socket.io";
-import type { CustomSocket } from "./lobbySock.js";
+import {
+  activeRooms,
+  removePlayerFromRoom,
+  destroyRoom,
+  type CustomSocket,
+} from "./lobbySock.js";
 import {
   collectItem,
   createNetworkerState,
@@ -18,6 +23,8 @@ const respawnTimers = new Map<string, NodeJS.Timeout>();
 const elapsedTimers = new Map<string, NodeJS.Timeout>();
 const ITEM_RESPAWN_INTERVAL_MS = 2000;
 const ITEMS_PER_RESPAWN_TICK = 3;
+
+
 
 // Used by the lobby layer when it needs to validate whether a match really
 // ended before allowing a rematch.
@@ -87,6 +94,12 @@ function startItemRespawnTimer(io: Server, roomId: string) {
   respawnTimers.set(roomId, timer);
 }
 
+export function destroyNetworkerGame(roomId: string) {
+  stopElapsedTimer(roomId);
+  stopItemRespawnTimer(roomId);
+  gameStates.delete(roomId);
+}
+
 // Called by lobbySock.ts once the lead player launches the match, so the
 // room's real players (not placeholder ones) start the score at zero.
 export function startNetworkerGame(
@@ -114,7 +127,7 @@ export function handleGame(io: Server, socket: CustomSocket) {
     socket.emit("game_state_updated", state);
   });
 
-  socket.on("pause_game", ({ roomId }: { roomId: string }) => {
+ /* socket.on("pause_game", ({ roomId }: { roomId: string }) => {
      const state = gameStates.get(roomId);
 
        if (!state) return;
@@ -130,6 +143,26 @@ export function handleGame(io: Server, socket: CustomSocket) {
 io.to(roomId).emit("game_state_updated", nextState) 
 
   })
+
+
+  socket.on("quit_game", (callback) => {
+const foundRoom = activeRooms.find(
+    (room) => room.sessionId === socket.roomId
+  );
+
+  if (!foundRoom) {
+      callback({
+      success: false,
+      error: "Room not found.",
+    });
+    return;
+  }
+  removePlayerFromRoom(foundRoom, socket, io);
+
+  callback({
+    success: true,
+  });
+}); */
 
   socket.on("collect_item", ({ itemId }: { itemId: string }) => {
     const roomId = socket.roomId;
@@ -169,13 +202,23 @@ io.to(roomId).emit("game_state_updated", nextState)
     io.to(roomId).emit("game_state_updated", nextState);
   });
 
-  socket.on("resume_game", () => {
+  socket.on("resume_game", (callback) => {
     const roomId = socket.roomId;
     const username = socket.username;
-    if (!roomId || !username) return;
+    if (!roomId || !username)
+      callback({
+    success: false,
+    error: "Missing room or username."
+  });
+      return;
 
     const state = gameStates.get(roomId);
-    if (!state || state.phase !== "paused") return;
+    if (!state || state.phase !== "paused")
+      callback({
+    success: false,
+    error: "Game not found or not paused."
+  });
+      return;
 
     const nextState = {
       ...state,
@@ -186,7 +229,69 @@ io.to(roomId).emit("game_state_updated", nextState)
     startElapsedTimer(io, roomId);
     startItemRespawnTimer(io, roomId);
     io.to(roomId).emit("game_state_updated", nextState);
+
+callback({
+    success: true,
   });
+
+  });
+
+socket.on("quit_game", (callback) => {
+  const roomId = socket.roomId;
+
+  if (!roomId) {
+    callback?.({
+      success: false,
+      error: "No room associated with this socket.",
+    });
+    return;
+  }
+
+  const room = activeRooms.find(
+    (room) => room.sessionId === roomId
+  );
+
+  if (!room) {
+    callback?.({
+      success: false,
+      error: "Room not found.",
+    });
+    return;
+  }
+
+  const player = room.players.find(
+    (player) => player.connectionId === socket.id
+  );
+
+  if (!player) {
+    callback?.({
+      success: false,
+      error: "Player not found in room.",
+    });
+    return;
+  }
+
+  const isLead =
+    player.connectionId === room.leadPlayer.connectionId;
+
+  console.log("[quit_game]", {
+    username: player.username,
+    roomId,
+    isLead,
+  });
+
+  if (isLead) {
+    // Lead quits → destroy the entire room.
+    destroyRoom(room, io);
+  } else {
+    // Normal player quits → only remove this player.
+    removePlayerFromRoom(room, socket, io);
+  }
+
+  callback?.({
+    success: true,
+  });
+});
 
   // Fires far more often than collect_item (roughly once per grid step), so
   // it stays a small standalone broadcast instead of resending the whole

@@ -1,16 +1,55 @@
+import {useNavigate} from '@tanstack/react-router'
 import { Pause, RotateCcw, Trophy } from 'lucide-react';
 import { useNetworkerStore } from '@/lib/networker-store';
+import { useEffect } from 'react'
 
-export function NetworkerOverlay({ localUsername }) : { localUsername: string } {
+export function NetworkerOverlay( {
 	localUsername,
 	onPlayAgain,
 	rematchError,
+	socket
 }: {
 	localUsername: string;
 	onPlayAgain: () => void;
 	rematchError: string | null;
-}
- {
+	socket: string
+}) {
+ 
+const navigate = useNavigate();
+const gameResume = () => {
+socket.emit("resume_game", (response: { success: boolean; error?: string }) => {
+if (!response.success) {
+	console.error(response.error);
+} 
+  });
+};
+ 
+
+const gameQuit = () => {
+socket.emit("quit_game", (response: { success: boolean; error?: string }) => {
+if (response.success) {
+  navigate({ to: "/" }) 
+    } else {
+      console.error(response.error);
+    }
+  });
+};
+ 
+useEffect(() => {
+  const handleGameExpired = () => {
+    navigate({ to: "/" });
+  };
+
+  //using lobby_expired here because there's no need to make same logic twice
+
+  socket.on("lobby_expired", handleGameExpired);
+
+  return () => {
+    socket.off("lobby_expired", handleGameExpired);
+  };
+}, [socket, navigate]);
+
+
     // The overlay reads server-approved state from Zustand.
 	const phase = useNetworkerStore((state) => state.gameState.phase);
 	const winnerUsername = useNetworkerStore(
@@ -23,21 +62,15 @@ export function NetworkerOverlay({ localUsername }) : { localUsername: string } 
 		(state) => state.gameState.systemMessage,
 	);
 
- const isPaused = phase === 'paused'
-  const isEnded = phase === 'ended'
-
-// Temporary debug trigger
-  if (isPaused) {
-    console.log('PAUSE IS WORKING — phase:', phase)
-  }
+	const isPaused = phase === 'paused';
+	const isEnded = phase === 'ended'
+	const isWinner = winnerUsername === localUsername;
+	const isLead = leadUsername === localUsername;
 
   if (!isPaused && !isEnded) {
     return null
   }
 
-	const isPaused = phase === 'paused';
-	const isWinner = winnerUsername === localUsername;
-	const isLead = leadUsername === localUsername;
 
 	return (
 		<div
@@ -54,8 +87,14 @@ export function NetworkerOverlay({ localUsername }) : { localUsername: string } 
 					<p className="networker-kicker">Game paused</p>
 					<h2>Take a moment</h2>
 					<p>{systemMessage + ` - ${localUsername}`  ?? `The game is currently paused by ${localUsername}`}</p>
-					<button className="transition-colors duration-200 outline-none hover:text-gray-500 focus-visible:text-gray-900 font-medium p-2">Resume game </button>
-					<button className="transition-colors duration-200 outline-none hover:text-gray-500 focus-visible:text-gray-900 font-medium p-2">Quit game</button>
+					
+					<button type="button" className="transition-colors duration-200 outline-none hover:text-gray-500 focus-visible:text-gray-900 font-medium p-2" onClick={gameResume}>
+					Resume game 
+					</button>
+
+					<button type="button" className="transition-colors duration-200 outline-none hover:text-gray-500 focus-visible:text-gray-900 font-medium p-2" onClick={gameQuit}>
+					Quit game
+					</button>
 				</>
 			) : (
 				<>
