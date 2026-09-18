@@ -1,11 +1,23 @@
-import { Pause, Trophy } from 'lucide-react';
+import { Pause, RotateCcw, Trophy } from 'lucide-react';
 import { useNetworkerStore } from '@/lib/networker-store';
 
 export function NetworkerOverlay({ localUsername }) : { localUsername: string } {
+	localUsername,
+	onPlayAgain,
+	rematchError,
+}: {
+	localUsername: string;
+	onPlayAgain: () => void;
+	rematchError: string | null;
+}
+ {
     // The overlay reads server-approved state from Zustand.
 	const phase = useNetworkerStore((state) => state.gameState.phase);
 	const winnerUsername = useNetworkerStore(
 		(state) => state.gameState.winnerUsername,
+	);
+	const leadUsername = useNetworkerStore(
+		(state) => state.gameState.leadUsername,
 	);
 	const systemMessage = useNetworkerStore(
 		(state) => state.gameState.systemMessage,
@@ -23,6 +35,9 @@ export function NetworkerOverlay({ localUsername }) : { localUsername: string } 
     return null
   }
 
+	const isPaused = phase === 'paused';
+	const isWinner = winnerUsername === localUsername;
+	const isLead = leadUsername === localUsername;
 
 	return (
 		<div
@@ -46,10 +61,25 @@ export function NetworkerOverlay({ localUsername }) : { localUsername: string } 
 				<>
 					<Trophy size={32} aria-hidden="true" />
 					<p className="networker-kicker">Match complete</p>
-					<h2>{winnerUsername ?? 'The winner'} wins!</h2>
+					<h2>{isWinner ? 'You win!' : `${winnerUsername ?? 'Another player'} wins!`}</h2>
 					<p>
-						You did it, you were the first to collect 100 LinkedIn connections!
+						{isWinner
+							? 'You did it, you were the first to collect 100 LinkedIn connections!'
+							: 'Sorry, we are not hiring junior developers right now.'}
 					</p>
+					{isLead ? (
+						<button
+							className="networker-overlay-action"
+							type="button"
+							onClick={onPlayAgain}
+						>
+							<RotateCcw size={18} aria-hidden="true" />
+							Play Again
+						</button>
+					) : (
+						<p>Waiting for the lead player to start another game.</p>
+					)}
+					{rematchError && <p role="alert">{rematchError}</p>}
 				</>
 			)}
 		</div>

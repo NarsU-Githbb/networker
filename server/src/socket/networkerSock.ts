@@ -15,27 +15,62 @@ const gameStates = new Map<string, NetworkerGameState>();
 // Tuned fast (and multiple items per tick) because points per item dropped
 // to 1-2 - the board needs far more items in circulation to avoid dry spells.
 const respawnTimers = new Map<string, NodeJS.Timeout>();
+const elapsedTimers = new Map<string, NodeJS.Timeout>();
 const ITEM_RESPAWN_INTERVAL_MS = 2000;
 const ITEMS_PER_RESPAWN_TICK = 3;
 
-// Called by lobbySock.ts once the lead player launches the match, so the
-// room's real players (not placeholder ones) start the score at zero.
-export function startNetworkerGame(
-  io: Server,
-  roomId: string,
-  players: { username: string }[],
-): NetworkerGameState {
-  const state = createNetworkerState(players);
-  gameStates.set(roomId, state);
+// Used by the lobby layer when it needs to validate whether a match really
+// ended before allowing a rematch.
+export function getNetworkerGameState(roomId: string) {
+  return gameStates.get(roomId);
+}
 
-  const existingTimer = respawnTimers.get(roomId);
-  if (existingTimer) clearInterval(existingTimer);
+function stopElapsedTimer(roomId: string) {
+  const timer = elapsedTimers.get(roomId);
+  if (!timer) return;
+
+  clearInterval(timer);
+  elapsedTimers.delete(roomId);
+}
+
+// The server owns the clock. Clients receive snapshots; they never calculate
+// the official match duration locally.
+function startElapsedTimer(io: Server, roomId: string) {
+  stopElapsedTimer(roomId);
 
   const timer = setInterval(() => {
     const currentState = gameStates.get(roomId);
     if (!currentState || currentState.phase !== "playing") {
-      clearInterval(timer);
-      respawnTimers.delete(roomId);
+      stopElapsedTimer(roomId);
+      return;
+    }
+
+    const nextState = {
+      ...currentState,
+      elapsedTime: currentState.elapsedTime + 1,
+    };
+    gameStates.set(roomId, nextState);
+    io.to(roomId).emit("game_state_updated", nextState);
+  }, 1000);
+
+  elapsedTimers.set(roomId, timer);
+}
+
+function stopItemRespawnTimer(roomId: string) {
+  const timer = respawnTimers.get(roomId);
+  if (!timer) return;
+
+  clearInterval(timer);
+  respawnTimers.delete(roomId);
+}
+
+function startItemRespawnTimer(io: Server, roomId: string) {
+  stopItemRespawnTimer(roomId);
+
+  const timer = setInterval(() => {
+    const currentState = gameStates.get(roomId);
+    if (!currentState || currentState.phase !== "playing") {
+      stopItemRespawnTimer(roomId);
       return;
     }
 
@@ -43,12 +78,28 @@ export function startNetworkerGame(
     for (let i = 0; i < ITEMS_PER_RESPAWN_TICK; i++) {
       nextState = spawnRandomItem(nextState);
     }
-    if (nextState === currentState) return; // no-op: board already full
+    if (nextState === currentState) return;
 
     gameStates.set(roomId, nextState);
     io.to(roomId).emit("game_state_updated", nextState);
   }, ITEM_RESPAWN_INTERVAL_MS);
+
   respawnTimers.set(roomId, timer);
+}
+
+// Called by lobbySock.ts once the lead player launches the match, so the
+// room's real players (not placeholder ones) start the score at zero.
+export function startNetworkerGame(
+  io: Server,
+  roomId: string,
+  players: { username: string }[],
+  leadUsername: string,
+): NetworkerGameState {
+  const state = createNetworkerState(players, leadUsername);
+  gameStates.set(roomId, state);
+
+  startElapsedTimer(io, roomId);
+  startItemRespawnTimer(io, roomId);
 
   return state;
 }
@@ -92,6 +143,48 @@ io.to(roomId).emit("game_state_updated", nextState)
     if (nextState === state) return; // no-op: already collected, unknown item, etc.
 
     gameStates.set(roomId, nextState);
+    if (nextState.phase === "ended") {
+      stopElapsedTimer(roomId);
+      stopItemRespawnTimer(roomId);
+    }
+    io.to(roomId).emit("game_state_updated", nextState);
+  });
+
+  socket.on("pause_game", () => {
+    const roomId = socket.roomId;
+    const username = socket.username;
+    if (!roomId || !username) return;
+
+    const state = gameStates.get(roomId);
+    if (!state || state.phase !== "playing") return;
+
+    const nextState = {
+      ...state,
+      phase: "paused" as const,
+      systemMessage: `${username} paused the match.`,
+    };
+    stopElapsedTimer(roomId);
+    stopItemRespawnTimer(roomId);
+    gameStates.set(roomId, nextState);
+    io.to(roomId).emit("game_state_updated", nextState);
+  });
+
+  socket.on("resume_game", () => {
+    const roomId = socket.roomId;
+    const username = socket.username;
+    if (!roomId || !username) return;
+
+    const state = gameStates.get(roomId);
+    if (!state || state.phase !== "paused") return;
+
+    const nextState = {
+      ...state,
+      phase: "playing" as const,
+      systemMessage: `${username} resumed the match.`,
+    };
+    gameStates.set(roomId, nextState);
+    startElapsedTimer(io, roomId);
+    startItemRespawnTimer(io, roomId);
     io.to(roomId).emit("game_state_updated", nextState);
   });
 
