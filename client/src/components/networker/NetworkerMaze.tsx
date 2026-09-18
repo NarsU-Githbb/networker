@@ -3,8 +3,8 @@ import type { Socket } from "socket.io-client"
 import { useNetworkerStore } from "@/lib/networker-store"
 import type { NetworkerConnectionItem } from "@/lib/networker-game"
 import {
-  NETWORKER_MAP,
   NETWORKER_PLAYER_START,
+  getNetworkerMap,
   isNetworkerWalkable,
 } from "@/lib/networker-map"
 
@@ -26,7 +26,6 @@ const MOVE_DURATION_MS = 130
 // always animate at MOVE_DURATION_MS since their boost state isn't synced.
 const SPEED_BOOST_DURATION_MS = 5000
 const BOOSTED_MOVE_DURATION_MS = MOVE_DURATION_MS / 2
-const MAZE_COLUMNS = NETWORKER_MAP[0].length
 
 const DIRECTIONS: Array<{ keys: string[]; deltaRow: number; deltaCol: number }> = [
   { keys: ["arrowup", "w"], deltaRow: -1, deltaCol: 0 },
@@ -59,8 +58,8 @@ const PAUSE_KEY = "p"
 // The rendered tile size is a CSS clamp() that scales with viewport width
 // (see --networker-maze-tile-size in index.css), so it can't be a constant -
 // it's measured from the live grid each frame instead.
-function getTileSize(mazeEl: HTMLDivElement | null): number {
-  return mazeEl ? mazeEl.clientWidth / MAZE_COLUMNS : 0
+function getTileSize(mazeEl: HTMLDivElement | null, mazeColumns: number): number {
+	return mazeEl ? mazeEl.clientWidth / mazeColumns : 0
 }
 
 function cellCenter(row: number, col: number, tileSize: number) {
@@ -112,6 +111,9 @@ export function NetworkerMaze({
   const connectionItems = useNetworkerStore(
     (state) => state.gameState.connectionItems,
   )
+  const mapId = useNetworkerStore((state) => state.gameState.mapId)
+  const networkerMap = getNetworkerMap(mapId)
+  const mazeColumns = networkerMap[0]?.length ?? 13
   const players = useNetworkerStore((state) => state.gameState.players)
   const phase = useNetworkerStore((state) => state.gameState.phase)
   // Seat = stable position in the room's player list, assigned once at
@@ -276,7 +278,7 @@ useEffect(() => {
     let frameId: number
 
     const tick = (time: number) => {
-      const tileSize = getTileSize(mazeRef.current)
+      const tileSize = getTileSize(mazeRef.current, mazeColumns)
 
       if (tileSize > 0) {
         const token = playerTokenRef.current
@@ -303,7 +305,7 @@ useEffect(() => {
             for (let step = 0; step < stepCount; step++) {
               const nextRow = targetRow + direction.deltaRow
               const nextCol = targetCol + direction.deltaCol
-              if (!isNetworkerWalkable(nextRow, nextCol)) break
+              if (!isNetworkerWalkable(nextRow, nextCol, networkerMap)) break
               targetRow = nextRow
               targetCol = nextCol
               visitedCells.push({ row: targetRow, col: targetCol })
@@ -381,7 +383,7 @@ useEffect(() => {
 
     frameId = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(frameId)
-  }, [socket, phase])
+  }, [mazeColumns, networkerMap, socket, phase])
 
   return (
     <section className="networker-maze-section" aria-label="Networker maze">
@@ -399,16 +401,18 @@ useEffect(() => {
         style={{
           // The CSS variable scales the map for the viewport; getTileSize()
           // reads the rendered result back for the rAF loop's pixel math.
-          gridTemplateColumns: `repeat(${MAZE_COLUMNS}, var(--networker-maze-tile-size))`,
+          gridTemplateColumns: `repeat(${mazeColumns}, var(--networker-maze-tile-size))`,
         }}
       >
-        {NETWORKER_MAP.flatMap((mapRow, row) =>
+        {networkerMap.flatMap((mapRow, row) =>
           [...mapRow].map((tile, col) => {
             // Person 2 defines item placement. Person 3 can later use these
             // same row/col values for collision checks in the game engine.
             const item = connectionItems.find(
               (connectionItem) =>
-                connectionItem.row === row && connectionItem.col === col,
+                connectionItem.row === row &&
+                connectionItem.col === col &&
+                isNetworkerWalkable(connectionItem.row, connectionItem.col, networkerMap),
             )
 
             return (
@@ -454,7 +458,7 @@ useEffect(() => {
                   row: player.row,
                   col: player.col,
                 }
-                paintCell(el, cell, getTileSize(mazeRef.current))
+                paintCell(el, cell, getTileSize(mazeRef.current, mazeColumns))
               } else {
                 remoteTokensRef.current.delete(player.username)
               }
