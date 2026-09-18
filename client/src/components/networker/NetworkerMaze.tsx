@@ -380,7 +380,9 @@ export function NetworkerMaze({
             // same row/col values for collision checks in the game engine.
             const item = connectionItems.find(
               (connectionItem) =>
-                connectionItem.row === row && connectionItem.col === col,
+                connectionItem.row === row &&
+                connectionItem.col === col &&
+                isNetworkerWalkable(connectionItem.row, connectionItem.col, networkerMap),
             )
 
             return (
