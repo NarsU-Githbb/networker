@@ -94,6 +94,7 @@ useEffect(() => {
 	const isEnded = phase === 'ended'
 	const isWinner = winnerUsername === localUsername;
 	const isLead = leadUsername === localUsername;
+	const endedWithoutWinner = isEnded && !winnerUsername;
 
   if (!isPaused && !isEnded) {
     return null
@@ -133,9 +134,17 @@ useEffect(() => {
 				<>
 					<Trophy size={32} aria-hidden="true" />
 					<p className="networker-kicker">Match complete</p>
-					<h2>{isWinner ? 'You win!' : `${winnerUsername ?? 'Another player'} wins!`}</h2>
+					<h2>
+						{endedWithoutWinner
+							? 'Match ended'
+							: isWinner
+								? 'You win!'
+								: `${winnerUsername ?? 'Another player'} wins!`}
+					</h2>
 					<p>
-						{isWinner
+						{endedWithoutWinner
+							? systemMessage ?? 'The match ended after one minute of inactivity.'
+							: isWinner
 							? 'You did it, you were the first to collect 100 LinkedIn connections!'
 							: 'Sorry, we are not hiring junior developers right now.'}
 					</p>

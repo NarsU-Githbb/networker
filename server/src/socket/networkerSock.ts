@@ -21,8 +21,10 @@ const gameStates = new Map<string, NetworkerGameState>();
 // to 1-2 - the board needs far more items in circulation to avoid dry spells.
 const respawnTimers = new Map<string, NodeJS.Timeout>();
 const elapsedTimers = new Map<string, NodeJS.Timeout>();
+const inactivityTimers = new Map<string, NodeJS.Timeout>();
 const ITEM_RESPAWN_INTERVAL_MS = 2000;
 const ITEMS_PER_RESPAWN_TICK = 3;
+const INACTIVITY_LIMIT_MS = 60_000;
 
 
 
@@ -38,6 +40,39 @@ function stopElapsedTimer(roomId: string) {
 
   clearInterval(timer);
   elapsedTimers.delete(roomId);
+}
+
+function stopInactivityTimer(roomId: string) {
+  const timer = inactivityTimers.get(roomId);
+  if (!timer) return;
+
+  clearTimeout(timer);
+  inactivityTimers.delete(roomId);
+}
+
+// A match ends without a winner when nobody makes a gameplay move for one
+// minute. This is separate from scoring: reaching 100 remains the only win.
+function resetInactivityTimer(io: Server, roomId: string) {
+  stopInactivityTimer(roomId);
+
+  const timer = setTimeout(() => {
+    const currentState = gameStates.get(roomId);
+    if (!currentState || currentState.phase !== "playing") return;
+
+    const nextState = {
+      ...currentState,
+      phase: "ended" as const,
+      winnerUsername: null,
+      systemMessage: "The match ended after one minute of inactivity.",
+    };
+    gameStates.set(roomId, nextState);
+    inactivityTimers.delete(roomId);
+    stopElapsedTimer(roomId);
+    stopItemRespawnTimer(roomId);
+    io.to(roomId).emit("game_state_updated", nextState);
+  }, INACTIVITY_LIMIT_MS);
+
+  inactivityTimers.set(roomId, timer);
 }
 
 // The server owns the clock. Clients receive snapshots; they never calculate
@@ -97,6 +132,7 @@ function startItemRespawnTimer(io: Server, roomId: string) {
 export function destroyNetworkerGame(roomId: string) {
   stopElapsedTimer(roomId);
   stopItemRespawnTimer(roomId);
+  stopInactivityTimer(roomId);
   gameStates.delete(roomId);
 }
 
@@ -113,6 +149,7 @@ export function startNetworkerGame(
 
   startElapsedTimer(io, roomId);
   startItemRespawnTimer(io, roomId);
+  resetInactivityTimer(io, roomId);
 
   return state;
 }
@@ -139,9 +176,11 @@ export function handleGame(io: Server, socket: CustomSocket) {
     if (nextState === state) return; // no-op: already collected, unknown item, etc.
 
     gameStates.set(roomId, nextState);
+    resetInactivityTimer(io, roomId);
     if (nextState.phase === "ended") {
       stopElapsedTimer(roomId);
       stopItemRespawnTimer(roomId);
+      stopInactivityTimer(roomId);
     }
     io.to(roomId).emit("game_state_updated", nextState);
   });
@@ -161,6 +200,7 @@ export function handleGame(io: Server, socket: CustomSocket) {
     };
     stopElapsedTimer(roomId);
     stopItemRespawnTimer(roomId);
+    stopInactivityTimer(roomId);
     gameStates.set(roomId, nextState);
     io.to(roomId).emit("game_state_updated", nextState);
   });
@@ -181,6 +221,7 @@ export function handleGame(io: Server, socket: CustomSocket) {
     gameStates.set(roomId, nextState);
     startElapsedTimer(io, roomId);
     startItemRespawnTimer(io, roomId);
+    resetInactivityTimer(io, roomId);
     io.to(roomId).emit("game_state_updated", nextState);
   });
 
@@ -264,9 +305,9 @@ io.to(data.roomId).emit("navigate_to_chat");
     if (!existingPlayer) return;
     players[playerIndex] = { ...existingPlayer, row, col };
     gameStates.set(roomId, { ...state, players });
+		resetInactivityTimer(io, roomId);
 
     socket.to(roomId).emit("player_moved", { username, row, col });
   });
 }
-
 
