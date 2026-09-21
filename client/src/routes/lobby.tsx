@@ -26,7 +26,7 @@ function Lobbying() {
   const [notification, setNotification] = useState<string>("")
   const [isError, setIsError] = useState<boolean>(false)
   const [expiresAt, setExpiresAt] = useState<number | null>(null);
-  const [countdown, setCountdown] = useState<number>(10 * 60); 
+  const [countdown, setCountdown] = useState<number>(60 * 60); 
 
 const canStartGame = teamLead && playerCount >= 2;
 
@@ -156,7 +156,7 @@ socket.on("game_started", () => {
 socket.on("lobby_expired", () => {
     setIsError(true);
   setNotification(
-    "Lobby expired due to inactivity. Returning home..."
+    "Room timer is up! Time to go outside & implement your networking skills in real life..."
   );
 
   setTimeout(() => {
@@ -205,7 +205,7 @@ socket.on("lobby_expired", () => {
       
       {teamLead && 
               <span className="flex items-endfont-mono bg-zinc-100 dark:bg-zinc-800 px-2 py-1 rounded text-sm font-bold">
-                Time Left: {formatTime(countdown)}
+                Room timer: {formatTime(countdown)}
               </span>
 }
         

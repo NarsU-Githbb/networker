@@ -182,9 +182,9 @@ const roomId = socket.roomId;
 
     room.liveState = "live";
 
-    //adds 10 minute expiration timer to the lobby
+    //adds 60 minute expiration timer to the lobby
 
-    room.expiresAt = Date.now() + 10 * 60 * 1000;
+    room.expiresAt = Date.now() + 60 * 60 * 1000;
 
     setTimeout(() => {
   const currentRoom = activeRooms.find(
@@ -201,7 +201,7 @@ gamestate is something else like "playing" then nothing happens */
   if (currentRoom.gameState === "lobby" ) {
     destroyRoom(currentRoom, io);
   }
-}, 10 * 60 * 1000);
+}, 60 * 60 * 1000);
 
     console.log(`Room ${room.sessionId} is now LIVE.`);
 
@@ -575,7 +575,6 @@ socket.on("play_again", (callback: (response: { success: boolean; error?: string
   }
 
   foundRoom.gameState = "lobby";
-  foundRoom.expiresAt = Date.now() + 10 * 60 * 1000;
 
   io.to(roomId).emit("return_to_lobby", { roomId });
   foundRoom.players.forEach((player) => {
