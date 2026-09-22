@@ -20,6 +20,17 @@ function Begin() {
     const [step, setStep] = useState(1)
   const [lead, setLead] = useState<string>("")
   const [secureRoomId, setSecureRoomId] = useState<string>("")
+  const [gameLink, setGameLink] = useState<string>(window.location.origin)
+
+  // Use the public tunnel link when the server has one, so friends can open it directly
+  useEffect(() => {
+    fetch("/api/public-url")
+      .then((res) => res.json())
+      .then((data: { url: string | null }) => {
+        if (data.url) setGameLink(data.url)
+      })
+      .catch(() => {})
+  }, [])
 
   
 
@@ -151,6 +162,23 @@ function Begin() {
                     Copy
                   </Button>
                 </div>
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="game-link">Game link</FieldLabel>
+                <div className="flex gap-2">
+                  <Input id="game-link" value={gameLink} readOnly className="bg-muted" />
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() => {
+                      navigator.clipboard.writeText(gameLink)
+                      toast.success("Link copied!")
+                    }}
+                  >
+                    Copy
+                  </Button>
+                </div>
+                <FieldDescription>Send this link and the Game ID to the other players.</FieldDescription>
               </Field>
             </CardContent>
             <CardFooter>

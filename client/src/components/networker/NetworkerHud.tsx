@@ -11,6 +11,25 @@ const phaseLabels = {
 	ended: 'Ended',
 } as const;
 
+// Isolated so the once-a-second elapsed-time tick only re-renders this one
+// small element, instead of the whole HUD (scoreboard, ranked-player list,
+// row refs) - which is what happened when `elapsedTime` was read directly
+// inside NetworkerHud: any store update to any field re-renders every hook
+// call in that component together, so the clock ticking dragged the entire
+// HUD along with it every second even though nothing else had changed.
+function NetworkerTimer() {
+	const elapsedTime = useNetworkerStore(
+		(state) => state.gameState.elapsedTime,
+	);
+
+	return (
+		<div className="networker-timer" role="timer" aria-live="polite">
+			<span>Match time:</span>
+			<strong>{formatTime(elapsedTime)}</strong>
+		</div>
+	);
+}
+
 export function NetworkerHud() {
 	// The HUD subscribes only to server-approved game state. It does not decide
 	// scores, winners, or item collection results.
@@ -21,10 +40,6 @@ export function NetworkerHud() {
 	);
 	const systemMessage = useNetworkerStore(
 		(state) => state.gameState.systemMessage,
-	);
-
-	const elapsedTime = useNetworkerStore(
-		(state) => state.gameState.elapsedTime,
 	);
 
 	// This is display-only derived data. The backend remains responsible for
@@ -50,9 +65,28 @@ export function NetworkerHud() {
 	const previousRowPositions = useRef(new Map<string, number>());
 	const rowAnimations = useRef(new Map<string, Animation>());
 
+	// Just the rank order, as a plain string - not the scores or anything
+	// else. `players` (and so `rankedPlayers`) gets a new array reference on
+	// every server snapshot, including the once-a-second elapsed-time tick
+	// where nobody's score changed at all. Keying the effect below on this
+	// instead means it only fires on an actual reorder.
+	const rankOrderKey = useMemo(
+		() => rankedPlayers.map(({ player }) => player.username).join('\u0000'),
+		[rankedPlayers],
+	);
+	const previousRankOrderKey = useRef(rankOrderKey);
+
 	// FLIP animation: after React reorders the rows, animate each row from its
 	// previous screen position to its new ranking position.
 	useLayoutEffect(() => {
+		// No actual reordering - skip. In particular, this is what keeps the
+		// once-a-second elapsed-time snapshot from forcing a synchronous
+		// layout read (getBoundingClientRect below) every player row, every
+		// second, for the entire match - real work with nothing to show for
+		// it, since nothing needs to animate.
+		if (rankOrderKey === previousRankOrderKey.current) return;
+		previousRankOrderKey.current = rankOrderKey;
+
 		const nextPositions = new Map<string, number>();
 		const reduceMotion = window.matchMedia(
 			'(prefers-reduced-motion: reduce)',
@@ -98,7 +132,7 @@ export function NetworkerHud() {
 		}
 
 		previousRowPositions.current = nextPositions;
-	}, [rankedPlayers]);
+	}, [rankOrderKey, rankedPlayers]);
 
 	return (
 		<section className="networker-hud-shell" aria-label="Networker game status">
@@ -111,15 +145,18 @@ export function NetworkerHud() {
 					</p>
 				</div>
 				<span className={`networker-phase networker-phase-${phase}`}>
+					{phase === 'playing' && (
+						<span
+							className="networker-live-dot networker-live-dot-playing"
+							aria-hidden="true"
+						/>
+					)}
 					<Activity size={15} aria-hidden="true" />
 					{phaseLabels[phase]}
 				</span>
 			</div>
 
-			<div className="networker-timer" role="timer" aria-live="polite">
-				<span>Match time:</span>
-				<strong>{formatTime(elapsedTime)}</strong>
-			</div>
+			<NetworkerTimer />
 
 			<div className="networker-stat-row">
 				<div className="networker-stat">

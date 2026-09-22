@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/server.ts",
+    "dev:public": "TUNNEL=1 tsx src/server.ts",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
@@ -12,6 +13,7 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@pinggy/pinggy": "^0.5.1",
     "cors": "^2.8.6",
     "express": "^5.2.1",
     "socket.io": "^4.8.3",

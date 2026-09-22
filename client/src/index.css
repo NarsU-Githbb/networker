@@ -234,6 +234,55 @@
 	background: #294532;
 }
 
+/* A small "on air" dot, used both in the Live badge and the pause overlay.
+   It has a real job beyond decoration: it's the only thing on screen that
+   keeps animating while the player is idle or the pause menu is up, so the
+   browser keeps compositing a frame every ~16.7ms the whole time the match
+   is active - not just while the token is moving. That's something a
+   `requestAnimationFrame` loop alone can't force; rAF only schedules a
+   callback, it doesn't make the browser paint if nothing visibly changed.
+   Each spot is a single extra compositor layer, animating only `opacity`
+   and `scale` - never `transform`, `width`, or anything that triggers
+   layout - so it costs the main thread nothing per frame. The animation's
+   duration only changes how the pulse looks, not how often it forces a
+   repaint: a CSS animation is resampled every vsync tick for as long as
+   it's running, regardless of cycle length. */
+.networker-live-dot {
+	display: inline-block;
+	vertical-align: middle;
+	width: 7px;
+	height: 7px;
+	border-radius: 50%;
+	animation: networker-live-dot-pulse 1.6s ease-in-out infinite;
+}
+
+.networker-live-dot-playing {
+	background: #7ed957;
+}
+
+.networker-live-dot-paused {
+	background: #f5c96a;
+}
+
+@keyframes networker-live-dot-pulse {
+	0%,
+	100% {
+		opacity: 0.55;
+		scale: 1;
+	}
+	50% {
+		opacity: 1;
+		scale: 1.3;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.networker-live-dot {
+		animation: none;
+		opacity: 1;
+	}
+}
+
 .networker-phase-ended {
 	border-color: #f5c96a;
 	background: #4b3c1d;
@@ -308,7 +357,6 @@
 
 .networker-player-row {
 	--networker-player-color: #a8c8a0;
-	will-change: transform;
 	display: flex;
 	align-items: center;
 	gap: 14px;
@@ -421,6 +469,16 @@
 	max-width: 100%;
 	margin: 0 auto;
 	overflow: hidden;
+	/* Item spawns/collects insert or remove a grid child, and that always
+	   forces a real layout pass - there's no avoiding that part, something is
+	   genuinely appearing or disappearing. `contain: layout` tells the browser
+	   that pass never needs to look outside this box (nothing in here can
+	   change this element's own size, since every track is a fixed
+	   `--networker-maze-tile-size` regardless of item count, and nothing
+	   outside depends on this element's content) - so the recalculation stays
+	   scoped to the maze itself instead of also re-checking its siblings
+	   (the HUD, the page layout) on every spawn/collect. */
+	contain: layout;
 }
 
 .networker-maze-player-token {
@@ -455,6 +513,10 @@
 }
 
 .networker-maze-item {
+	/* Direct child of the .networker-maze grid now (see MazeItems), placed by
+	   explicit grid-row/grid-column - this centers it within that cell instead
+	   of the item stretching or pinning to the cell's corner. */
+	place-self: center;
 	width: 19px;
 	height: 19px;
 	border: 2px solid #f5c96a;

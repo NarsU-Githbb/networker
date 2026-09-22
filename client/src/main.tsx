@@ -8,7 +8,7 @@ import { io } from "socket.io-client"
 
 
 // Create the single, persistent socket instance
-const socket = io("http://localhost:3000", {
+const socket = io({
   autoConnect: true,
 })
 

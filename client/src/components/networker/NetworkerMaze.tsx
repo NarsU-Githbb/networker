@@ -1,6 +1,6 @@
-import { useEffect, useRef } from "react"
+import { memo, useEffect, useMemo, useRef } from "react"
 import type { Socket } from "socket.io-client"
-import { useNetworkerStore } from "@/lib/networker-store"
+import { NetworkerStore, useNetworkerStore } from "@/lib/networker-store"
 import type { NetworkerConnectionItem } from "@/lib/networker-game"
 import {
   NETWORKER_PLAYER_START,
@@ -19,6 +19,9 @@ type Cell = { row: number; col: number }
 type CellAnimation = { from: Cell; to: Cell; startTime: number; durationMs: number }
 
 const MOVE_DURATION_MS = 130
+
+// Most remote moves allowed to wait in the playback queue before snapping.
+const MAX_REMOTE_QUEUE = 8
 
 // Collecting a LinkedIn Premium item halves the local player's move duration
 // (so every step and dash covers its distance twice as fast) for this long.
@@ -57,9 +60,19 @@ const PAUSE_KEY = "p"
 
 // The rendered tile size is a CSS clamp() that scales with viewport width
 // (see --networker-maze-tile-size in index.css), so it can't be a constant -
-// it's measured from the live grid each frame instead.
-function getTileSize(mazeEl: HTMLDivElement | null, mazeColumns: number): number {
-	return mazeEl ? mazeEl.clientWidth / mazeColumns : 0
+// it's measured from the live grid. The measurement is cached (see the
+// ResizeObserver effect in NetworkerMaze) rather than read inside the rAF loop,
+// because reading clientWidth forces a synchronous layout every frame.
+
+// When one step ends mid-frame, the next chained step starts at the exact end
+// time instead of the (later) frame time, so the leftover milliseconds are not
+// thrown away. Without this the token rests on a tile for a whole extra frame
+// between steps, which reads as a stutter while holding a key. Gaps longer
+// than this (idle, background tab) start fresh at the current frame time.
+const MAX_CARRY_MS = 50
+function chainStartTime(previousEndTime: number, time: number): number {
+  const overshoot = time - previousEndTime
+  return overshoot >= 0 && overshoot < MAX_CARRY_MS ? previousEndTime : time
 }
 
 function cellCenter(row: number, col: number, tileSize: number) {
@@ -95,6 +108,111 @@ function applyAnimationFrame(
   return t >= 1
 }
 
+// One maze tile - wall or floor, nothing else. Deliberately has no idea
+// items exist: the server respawns items every couple of seconds for most of
+// the match (the board starts under its cap and refills whenever one is
+// collected), and that used to flow into this same grid, forcing React to
+// re-run and diff all ~170 tiles on every respawn even though at most a
+// couple of cells were affected. Splitting items out into MazeItems (below)
+// means a respawn now only touches the handful of item elements that exist,
+// never this grid.
+const MazeTile = memo(function MazeTile({
+  row,
+  col,
+  isWall,
+}: {
+  row: number
+  col: number
+  isWall: boolean
+}) {
+  return (
+    <div
+      className={`networker-maze-tile ${isWall ? "networker-maze-wall" : "networker-maze-floor"}`}
+      // Explicit placement, not left to auto-flow: MazeItems below also
+      // places elements into this same grid with an explicit row/column, and
+      // CSS Grid's auto-placement algorithm treats explicitly-positioned
+      // items as already "claiming" their cell - it then packs every
+      // auto-placed item (these tiles, if left unpositioned) into the
+      // remaining free cells, skipping whichever ones the items sit on. That
+      // shifts every tile after an occupied cell out of place, and the shift
+      // pattern changes with every spawn/collect - which is exactly the
+      // "random, constantly changing map" bug. Giving tiles the same kind of
+      // explicit position removes them from auto-placement entirely, so nothing
+      // here can displace anything else.
+      style={{ gridRow: row + 1, gridColumn: col + 1 }}
+    />
+  )
+})
+
+// The static wall/floor grid. Reads only the map, never item state, so it
+// renders once per match and is otherwise left alone.
+const MazeGrid = memo(function MazeGrid({ networkerMap }: { networkerMap: readonly string[] }) {
+  return (
+    <>
+      {networkerMap.flatMap((mapRow, row) =>
+        [...mapRow].map((tile, col) => (
+          <MazeTile key={`${row}-${col}`} row={row} col={col} isWall={tile === "#"} />
+        )),
+      )}
+    </>
+  )
+})
+
+// The dynamic items layer. Rendered as direct children of the same CSS grid
+// as MazeGrid (see .networker-maze), placed onto their cell with explicit
+// grid-row/grid-column instead of pixel math - items don't animate between
+// cells like the player tokens do, they just appear/disappear, so plain grid
+// placement is enough and needs no tile-size measurement at all. Only the
+// active items exist as elements (currently capped at 30), versus diffing
+// all ~170 tiles on every respawn.
+const MazeItems = memo(function MazeItems() {
+  // The maze reads item state from Zustand, but does not award points or mark
+  // items as collected. Those rules belong to the authoritative game state.
+  const connectionItems = useNetworkerStore(
+    (state) => state.gameState.connectionItems,
+  )
+  const mapId = useNetworkerStore((state) => state.gameState.mapId)
+  const networkerMap = getNetworkerMap(mapId)
+  const mazeColumns = networkerMap[0]?.length ?? 13
+  // The first item on a cell wins, as before - two items were never meant to
+  // stack on one tile.
+  const visibleItems = useMemo(() => {
+    const seenCells = new Set<number>()
+    const items: NetworkerConnectionItem[] = []
+    for (const item of connectionItems) {
+      if (item.isCollected) continue
+      const key = item.row * mazeColumns + item.col
+      if (seenCells.has(key)) continue
+      if (!isNetworkerWalkable(item.row, item.col, networkerMap)) continue
+      seenCells.add(key)
+      items.push(item)
+    }
+    return items
+  }, [connectionItems, mazeColumns, networkerMap])
+
+  return (
+    <>
+      {visibleItems.map((item) => (
+        <span
+          key={item.itemId}
+          className={`networker-maze-item${
+            item.kind === "premium" ? " networker-maze-item-premium" : ""
+          }`}
+          style={{ gridRow: item.row + 1, gridColumn: item.col + 1 }}
+          title={
+            item.kind === "premium"
+              ? "LinkedIn Premium: momentary speed boost"
+              : `${item.points} LinkedIn connections`
+          }
+        >
+          {/* Temporary text marker; replace with the final item visual. */}
+          {item.kind === "premium" ? "★" : "in"}
+        </span>
+      ))}
+    </>
+  )
+})
+
 // Temporary Person 2 prototype. Person 3 can replace this presentational grid
 // with the rAF-driven renderer once keyboard movement and collision are ready.
 export function NetworkerMaze({
@@ -106,22 +224,33 @@ export function NetworkerMaze({
   localUsername: string
   roomId: string
 }) {
-  // The maze reads item state from Zustand, but does not award points or mark
-  // items as collected. Those rules belong to the authoritative game state.
-  const connectionItems = useNetworkerStore(
-    (state) => state.gameState.connectionItems,
-  )
   const mapId = useNetworkerStore((state) => state.gameState.mapId)
   const networkerMap = getNetworkerMap(mapId)
   const mazeColumns = networkerMap[0]?.length ?? 13
-  const players = useNetworkerStore((state) => state.gameState.players)
+  // Only the roster (usernames, in seat order) matters for rendering tokens.
+  // Selecting a joined string keeps this component from re-rendering on every
+  // snapshot, since positions/scores in `players` change constantly but the
+  // roster does not. Positions are read on demand via getState().
+  const rosterKey = useNetworkerStore((state) =>
+    state.gameState.players.map((player) => player.username).join("\u0000"),
+  )
   const phase = useNetworkerStore((state) => state.gameState.phase)
   // Seat = stable position in the room's player list, assigned once at
   // match start (createNetworkerState) and never reordered - used for both
   // spawn corner and color, so they stay in sync across every client.
-  const playersWithSeat = players.map((player, seat) => ({ ...player, seat }))
+  const playersWithSeat = useMemo(
+    () =>
+      (rosterKey ? rosterKey.split("\u0000") : []).map((username, seat) => ({
+        username,
+        seat,
+      })),
+    [rosterKey],
+  )
   const mySeat = playersWithSeat.find((player) => player.username === localUsername)?.seat ?? 0
-  const otherPlayers = playersWithSeat.filter((player) => player.username !== localUsername)
+  const otherPlayers = useMemo(
+    () => playersWithSeat.filter((player) => player.username !== localUsername),
+    [playersWithSeat, localUsername],
+  )
 
   const mazeRef = useRef<HTMLDivElement | null>(null)
   const playerTokenRef = useRef<HTMLSpanElement | null>(null)
@@ -152,11 +281,13 @@ useEffect(() => {
   // its own maze corner.
   useEffect(() => {
     if (hasSpawnedRef.current) return
-    const me = players.find((player) => player.username === localUsername)
+    const me = NetworkerStore.getState().gameState.players.find(
+      (player) => player.username === localUsername,
+    )
     if (!me) return
     hasSpawnedRef.current = true
     cellRef.current = { row: me.row, col: me.col }
-  }, [players, localUsername])
+  }, [playersWithSeat, localUsername])
 
   // Render state for every OTHER player: their last known cell, an in-flight
   // interpolation (if they're mid-move), and the DOM token to animate.
@@ -164,14 +295,20 @@ useEffect(() => {
   const remoteTokensRef = useRef<Map<string, HTMLSpanElement>>(new Map())
   const remoteCellsRef = useRef<Map<string, Cell>>(new Map())
   const remoteAnimationsRef = useRef<Map<string, CellAnimation>>(new Map())
+  // Moves received but not yet played. Network delivery is bursty (esp. over a
+  // tunnel), so moves are queued and played back one after another instead of
+  // restarting the slide on every message.
+  const remoteQueueRef = useRef<Map<string, Cell[]>>(new Map())
 
   // Seed a remote player's tracked cell the first time we see them (e.g. when
   // the match starts). After that, only live player_moved events move them -
   // ignoring later game_state_updated snapshots here avoids visually
   // snapping a player backward to a slightly stale broadcast position.
   useEffect(() => {
-    for (const player of otherPlayers) {
-      if (!remoteCellsRef.current.has(player.username)) {
+    const players = NetworkerStore.getState().gameState.players
+    for (const other of otherPlayers) {
+      const player = players.find((candidate) => candidate.username === other.username)
+      if (player && !remoteCellsRef.current.has(player.username)) {
         remoteCellsRef.current.set(player.username, { row: player.row, col: player.col })
       }
     }
@@ -181,6 +318,7 @@ useEffect(() => {
       if (!currentUsernames.has(username)) {
         remoteCellsRef.current.delete(username)
         remoteAnimationsRef.current.delete(username)
+        remoteQueueRef.current.delete(username)
         remoteTokensRef.current.delete(username)
       }
     }
@@ -196,14 +334,23 @@ useEffect(() => {
       row: number
       col: number
     }) => {
-      const previousCell = remoteCellsRef.current.get(username) ?? { row, col }
-      remoteAnimationsRef.current.set(username, {
-        from: previousCell,
-        to: { row, col },
-        startTime: performance.now(),
-        durationMs: MOVE_DURATION_MS,
-      })
-      remoteCellsRef.current.set(username, { row, col })
+      if (!remoteCellsRef.current.has(username)) {
+        remoteCellsRef.current.set(username, { row, col })
+        return
+      }
+
+      const queue = remoteQueueRef.current.get(username) ?? []
+      queue.push({ row, col })
+
+      // Far behind (e.g. a stalled connection): stop replaying old steps and
+      // jump straight to the latest position.
+      if (queue.length > MAX_REMOTE_QUEUE) {
+        remoteAnimationsRef.current.delete(username)
+        remoteCellsRef.current.set(username, { row, col })
+        queue.length = 0
+      }
+
+      remoteQueueRef.current.set(username, queue)
     }
 
     socket.on("player_moved", handlePlayerMoved)
@@ -211,14 +358,6 @@ useEffect(() => {
       socket.off("player_moved", handlePlayerMoved)
     }
   }, [socket])
-
-  // The rAF loop below only runs once (empty deps) so it closes over stale
-  // props/state; this ref keeps it reading the latest connection items
-  // without needing to restart the loop every time the store updates.
-  const connectionItemsRef = useRef<NetworkerConnectionItem[]>(connectionItems)
-  useEffect(() => {
-    connectionItemsRef.current = connectionItems
-  }, [connectionItems])
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -272,16 +411,47 @@ useEffect(() => {
       window.removeEventListener("keydown", handleKeyDown)
       window.removeEventListener("keyup", handleKeyUp)
     }
-  }, [[socket, roomId, phase]])
+  }, [socket, roomId, phase])
+
+  // Tile size in px, refreshed only when the maze element actually resizes.
+  const tileSizeRef = useRef(0)
+  // Last boost-class state written to the token, so the loop only touches the
+  // DOM when it changes instead of every frame.
+  const isBoostedRef = useRef(false)
+  // When the local player's last step ended (see chainStartTime).
+  const animationEndRef = useRef(-Infinity)
+
+  useEffect(() => {
+    const mazeEl = mazeRef.current
+    if (!mazeEl) return
+
+    const measure = () => {
+      tileSizeRef.current = mazeEl.clientWidth / mazeColumns
+    }
+    measure()
+
+    const observer = new ResizeObserver(measure)
+    observer.observe(mazeEl)
+    return () => observer.disconnect()
+  }, [mazeColumns])
 
   useEffect(() => {
     let frameId: number
 
     const tick = (time: number) => {
-      const tileSize = getTileSize(mazeRef.current, mazeColumns)
+      const tileSize = tileSizeRef.current
 
       if (tileSize > 0) {
         const token = playerTokenRef.current
+
+        // Retire a finished step *before* looking for the next one, so a held
+        // key chains straight into the next step on this same frame instead of
+        // resting on the tile for an extra frame.
+        const finishing = animationRef.current
+        if (finishing && time - finishing.startTime >= finishing.durationMs) {
+          animationEndRef.current = finishing.startTime + finishing.durationMs
+          animationRef.current = null
+        }
 
         // Idle: try to start a move toward whichever held direction is walkable.
         if (phaseRef.current === "playing" && !animationRef.current && token) {
@@ -320,7 +490,7 @@ useEffect(() => {
               animationRef.current = {
                 from: { row, col },
                 to: { row: targetRow, col: targetCol },
-                startTime: time,
+                startTime: chainStartTime(animationEndRef.current, time),
                 durationMs,
               }
               cellRef.current = { row: targetRow, col: targetCol }
@@ -333,7 +503,7 @@ useEffect(() => {
               // speed boost is optimistic (not waiting for server approval),
               // same as the dash cooldown - a purely client-side feel effect.
               for (const cell of visitedCells) {
-                const passedItem = connectionItemsRef.current.find(
+                const passedItem = NetworkerStore.getState().gameState.connectionItems.find(
                   (item) => item.row === cell.row && item.col === cell.col && !item.isCollected,
                 )
                 if (passedItem) {
@@ -354,26 +524,55 @@ useEffect(() => {
         if (token) {
           const animation = animationRef.current
           if (animation && applyAnimationFrame(token, animation, time, tileSize)) {
+            animationEndRef.current = animation.startTime + animation.durationMs
             animationRef.current = null
           }
           if (!animationRef.current) {
             paintCell(token, cellRef.current, tileSize)
           }
-          token.classList.toggle("networker-maze-player-boosted", time < speedBoostUntilRef.current)
+          const isBoosted = time < speedBoostUntilRef.current
+          if (isBoosted !== isBoostedRef.current) {
+            isBoostedRef.current = isBoosted
+            token.classList.toggle("networker-maze-player-boosted", isBoosted)
+          }
         }
 
         // Same treatment, driven by the last player_moved message instead of
         // local input, for every other player in the room.
-        remoteCellsRef.current.forEach((cell, username) => {
+        remoteCellsRef.current.forEach((_restCell, username) => {
           const remoteToken = remoteTokensRef.current.get(username)
           if (!remoteToken) return
 
-          const animation = remoteAnimationsRef.current.get(username)
+          let animation = remoteAnimationsRef.current.get(username)
+          let nextStartTime = time
           if (animation && applyAnimationFrame(remoteToken, animation, time, tileSize)) {
+            nextStartTime = chainStartTime(animation.startTime + animation.durationMs, time)
+            // The slide finished: that target is now the resting cell.
+            remoteCellsRef.current.set(username, animation.to)
             remoteAnimationsRef.current.delete(username)
+            animation = undefined
           }
-          if (!remoteAnimationsRef.current.has(username)) {
-            paintCell(remoteToken, cell, tileSize)
+
+          if (!animation) {
+            const queue = remoteQueueRef.current.get(username)
+            const next = queue?.shift()
+            const from = remoteCellsRef.current.get(username)
+            if (next && from && queue) {
+              // Play faster while a backlog exists so the token catches up.
+              animation = {
+                from,
+                to: next,
+                startTime: nextStartTime,
+                durationMs: Math.max(40, MOVE_DURATION_MS / (1 + queue.length)),
+              }
+              remoteAnimationsRef.current.set(username, animation)
+              applyAnimationFrame(remoteToken, animation, time, tileSize)
+            }
+          }
+
+          if (!animation) {
+            const restCell = remoteCellsRef.current.get(username)
+            if (restCell) paintCell(remoteToken, restCell, tileSize)
           }
         })
       }
@@ -383,7 +582,7 @@ useEffect(() => {
 
     frameId = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(frameId)
-  }, [mazeColumns, networkerMap, socket, phase])
+  }, [mazeColumns, networkerMap, socket])
 
   return (
     <section className="networker-maze-section" aria-label="Networker maze">
@@ -399,48 +598,13 @@ useEffect(() => {
         ref={mazeRef}
         className="networker-maze"
         style={{
-          // The CSS variable scales the map for the viewport; getTileSize()
+          // The CSS variable scales the map for the viewport; the ResizeObserver
           // reads the rendered result back for the rAF loop's pixel math.
           gridTemplateColumns: `repeat(${mazeColumns}, var(--networker-maze-tile-size))`,
         }}
       >
-        {networkerMap.flatMap((mapRow, row) =>
-          [...mapRow].map((tile, col) => {
-            // Person 2 defines item placement. Person 3 can later use these
-            // same row/col values for collision checks in the game engine.
-            const item = connectionItems.find(
-              (connectionItem) =>
-                connectionItem.row === row &&
-                connectionItem.col === col &&
-                isNetworkerWalkable(connectionItem.row, connectionItem.col, networkerMap),
-            )
-
-            return (
-              <div
-                className={`networker-maze-tile ${
-                  tile === "#" ? "networker-maze-wall" : "networker-maze-floor"
-                }`}
-                key={`${row}-${col}`}
-              >
-                {item && !item.isCollected && (
-                  <span
-                    className={`networker-maze-item${
-                      item.kind === "premium" ? " networker-maze-item-premium" : ""
-                    }`}
-                    title={
-                      item.kind === "premium"
-                        ? "LinkedIn Premium: momentary speed boost"
-                        : `${item.points} LinkedIn connections`
-                    }
-                  >
-                    {/* Temporary text marker; replace with the final item visual. */}
-                    {item.kind === "premium" ? "★" : "in"}
-                  </span>
-                )}
-              </div>
-            )
-          }),
-        )}
+        <MazeGrid networkerMap={networkerMap} />
+        <MazeItems />
 
         <span
           ref={playerTokenRef}
@@ -454,11 +618,14 @@ useEffect(() => {
             ref={(el) => {
               if (el) {
                 remoteTokensRef.current.set(player.username, el)
-                const cell = remoteCellsRef.current.get(player.username) ?? {
-                  row: player.row,
-                  col: player.col,
-                }
-                paintCell(el, cell, getTileSize(mazeRef.current, mazeColumns))
+                const cell =
+                  remoteCellsRef.current.get(player.username) ??
+                  NetworkerStore.getState().gameState.players.find(
+                    (candidate) => candidate.username === player.username,
+                  ) ?? { row: 0, col: 0 }
+                // Before the first measurement the size is 0; the rAF loop
+                // paints resting tokens every frame, so skipping is safe.
+                if (tileSizeRef.current > 0) paintCell(el, cell, tileSizeRef.current)
               } else {
                 remoteTokensRef.current.delete(player.username)
               }

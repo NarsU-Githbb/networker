@@ -113,7 +113,17 @@ useEffect(() => {
 				//need to figure out how to get the proper username who paused
 				<>
 					<Pause size={32} aria-hidden="true" />
-					<p className="networker-kicker">Game paused</p>
+					<p className="networker-kicker">
+						{/* Keeps the browser compositing a frame every tick while the
+						    pause overlay covers the whole screen - see the comment on
+						    .networker-live-dot in index.css for why this matters for
+						    the "no dropped frames while paused" requirement. */}
+						<span
+							className="networker-live-dot networker-live-dot-paused"
+							aria-hidden="true"
+						/>{' '}
+						Game paused
+					</p>
 					<h2>Take a moment</h2>
 					<p>{systemMessage + ` - ${localUsername}`  ?? `The game is currently paused by ${localUsername}`}</p>
 					

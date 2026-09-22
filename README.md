@@ -4,28 +4,69 @@
 
 ## Getting Started (Development Mode)
 
-How to run in dev mode:
+The server is a single Node.js process (Express + Socket.IO) that also serves
+the client through Vite - one process, one port, nothing else to run.
 
-1. Go to client/ directory & use "npm install" for the frontend.
+1. Install dependencies once:
 
-2. Then go to server/ directory & use "npm install" for the backend.
+```bash
+cd client && npm install
+cd ../server && npm install
+```
 
-3. Write "npx tsx src/server.ts" & now the project is online in http://localhost:3000/ 
+2. From `server/`, start everything:
+
+```bash
+npm run dev:public
+```
+
+This serves the game at http://localhost:3000/ and also opens a public
+Pinggy tunnel so other players can join over the internet - see "Share the
+game with a public link" below.
+
+Local-only alternative, no tunnel: `npm run dev` (from `server/`).
 
 ## User Guide 
 
 1. (text here) 
 
-## Generate Pinggy link (for early development testing)
+## Share the game with a public link (Pinggy)
 
-1. Use this command to generate Pinggy link:
+1. In server/ run:
 
 ```
-ssh -p 443 -R0:localhost:3000 free.pinggy.io
+npm run dev:public
 ```
-2. Copy paste the https Pinggy link & You can now send this link to the user you want to start the game with (along with the chat ID). 
 
-3. It should bring the user2 into the main page, where he should press "TBD" button. There he can give the chat id, username & access into the game with you.
+2. Create a room. The "Game ID" step now shows a **Game link** (the Pinggy URL). Copy it and send it, together with the Game ID, to the other players.
+
+3. They open the link, press the join button, then enter the Game ID & a username.
+
+Notes: free Pinggy tunnels last about 60 minutes and the URL changes on every start. Without `TUNNEL=1` (plain `npm run dev`) no tunnel is opened and the link shown is just the local address.
+
+## Verifying 60 FPS / no dropped frames
+
+Mandatory requirement: a constant **minimum of 60 FPS**, with no dropped
+frames, while playing. A drop at the exact moment of switching browser tabs
+is acceptable; drops that continue after switching back are not.
+
+1. Open the game in Chrome and start a match.
+2. DevTools (`F12`) → Command Menu (`Ctrl+Shift+P` / `Cmd+Shift+P`) → run
+   **"Show frames per second (FPS) meter"**. It should read at/near 60 while
+   playing, including while standing still or the pause menu is open.
+3. For actual proof (not just a live read): DevTools → **Performance** tab →
+   record (●) → play normally for ~15s (move, dash, collect items,
+   pause/resume) → stop.
+   - Check the **Frames** lane: every block should be solid green. Red or
+     striped blocks are dropped frames.
+   - Click a frame and open the **Main** track underneath it to see what ran
+     during it, if something did drop.
+
+Note: the FPS meter reads low when literally nothing on screen is changing,
+because Chrome skips drawing a frame with no visual change - that's not a
+real drop. The pulsing "Live"/"Paused" indicator exists specifically so the
+game is always drawing something during a match, so this shouldn't come up
+in normal play.
 
 ## Tech Stack (can be deleted later)
 
