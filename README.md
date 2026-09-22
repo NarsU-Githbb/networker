@@ -152,18 +152,29 @@ The client reports movement and collection attempts. The server checks collectio
 
 Shared event and state names are documented in [`docs/shared-names.md`](docs/shared-names.md). A higher-level data-flow diagram is available in [`docs/networker-architecture.md`](docs/networker-architecture.md).
 
-## Screenshots and User Journey Evidence
+## Project Structure
 
 ```text
-docs/screenshots/
-├── 01-home-screen.png
-├── 02-lobby-waiting-for-players.png
-├── 03-maze-with-players.png
-├── 04-live-game-scoreboard.png
-├── 05-pause-system-message.png
-├── 06-end-game-win.png
-└── 07-end-game-lose.png
+.
+├── client/
+│   ├── public/                   # Static assets
+│   └── src/
+│       ├── components/networker/ # Maze, HUD, overlays, and sound effects
+│       ├── components/ui/        # Reusable UI components
+│       ├── lib/                  # Maps, game state, networking, and utilities
+│       └── routes/               # Home, room, lobby, game, and chat pages
+├── server/
+│   └── src/
+│       ├── game/                 # Authoritative game rules and state
+│       ├── socket/               # Lobby, gameplay, chat, and disconnect events
+│       └── utils/                # Room IDs and public-tunnel setup
+├── docs/                         # Shared vocabulary and screenshots
+├── docker-compose.yml
+└── README.md
 ```
+
+## Screenshots and User Journey Evidence
+
 
 The current user-journey screenshots are:
 
@@ -250,10 +261,6 @@ The game uses `requestAnimationFrame` and elapsed timestamps for movement render
 
 
 ## Troubleshooting
-
-### Port 3000 is already in use
-
-Stop the existing server process before starting another one, or update the server port and the client connection configuration together.
 
 ### Players cannot connect through the public link
 
