@@ -217,7 +217,7 @@ export function NetworkerHud() {
 										className="networker-progress-track"
 										aria-label={`${player.username} has ${player.score} connections`}
 									>
-										<span style={{ width: `${progress}%` }} />
+										<span style={{ transform: `scaleX(${progress / 100})` }} />
 									</div>
 								</div>
 							</div>

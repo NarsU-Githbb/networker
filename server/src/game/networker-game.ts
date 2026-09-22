@@ -117,12 +117,16 @@ function getSpawnPoint(seat: number) {
 // whoever collects one (see NetworkerMaze.tsx's speedBoostUntilRef).
 export type NetworkerItemKind = "connection" | "premium";
 
+// An item is only ever present in NetworkerGameState.connectionItems while
+// active; collectItem removes it outright instead of flagging it, so the
+// array (rebroadcast on every state update, including the once-a-second
+// elapsed-time tick) stays bounded for the whole match instead of growing
+// with every item ever spawned.
 export type NetworkerConnectionItem = {
   itemId: string;
   row: number;
   col: number;
   points: number;
-  isCollected: boolean;
   kind: NetworkerItemKind;
 };
 
@@ -156,7 +160,6 @@ function createInitialConnectionItems(
       row: cell.row,
       col: cell.col,
       points: index % 2 === 0 ? 1 : 2,
-      isCollected: false,
       kind: "connection" as const,
     };
   });
@@ -195,7 +198,7 @@ export function collectItem(
   if (state.phase !== "playing") return state;
 
   const connection = state.connectionItems.find((item) => item.itemId === itemId);
-  if (!connection || connection.isCollected) return state;
+  if (!connection) return state;
 
   const players = state.players.map((player) => {
     if (player.username !== username) return player;
@@ -209,9 +212,7 @@ export function collectItem(
     phase: winningPlayer ? "ended" : state.phase,
     winnerUsername: winningPlayer?.username ?? state.winnerUsername,
     players,
-    connectionItems: state.connectionItems.map((item) =>
-      item.itemId === itemId ? { ...item, isCollected: true } : item,
-    ),
+    connectionItems: state.connectionItems.filter((item) => item.itemId !== itemId),
     systemMessage: `${username} collected ${connection.points} LinkedIn connections.`,
   };
 }
@@ -235,13 +236,10 @@ const PREMIUM_ITEM_POINTS = 5;
 export function spawnRandomItem(state: NetworkerGameState): NetworkerGameState {
   if (state.phase !== "playing") return state;
 
-  const activeItemCount = state.connectionItems.filter((item) => !item.isCollected).length;
-  if (activeItemCount >= MAX_ACTIVE_ITEMS) return state;
+  if (state.connectionItems.length >= MAX_ACTIVE_ITEMS) return state;
 
   const occupied = new Set(
-    state.connectionItems
-      .filter((item) => !item.isCollected)
-      .map((item) => `${item.row},${item.col}`),
+    state.connectionItems.map((item) => `${item.row},${item.col}`),
   );
   const map = getNetworkerMap(state.mapId);
   const emptyCells = findReachableCells(map, { row: 1, col: 1 }).filter(
@@ -263,7 +261,6 @@ export function spawnRandomItem(state: NetworkerGameState): NetworkerGameState {
     row: cell.row,
     col: cell.col,
     points,
-    isCollected: false,
     kind: isPremium ? "premium" : "connection",
   };
 

@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "dev:public": "TUNNEL=1 tsx src/server.ts",
+    "build": "npm run build --prefix ../client",
+    "start:public": "npm run build && TUNNEL=1 NODE_ENV=production tsx src/server.ts",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],

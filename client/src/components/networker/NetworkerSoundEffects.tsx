@@ -53,19 +53,14 @@ export function NetworkerSoundEffects({ localUsername }: { localUsername: string
 	}, [localUsername, phase, winnerUsername]);
 
 	useEffect(() => {
-		// Collection sounds are triggered only when the server changes an item
-		// from available to collected, preventing duplicate local predictions.
-		const previousItemState = new Map(
-			previousItems.current.map((item) => [item.itemId, item]),
-		);
+		// The server removes an item outright once collected (instead of
+		// flagging it), so a collection now shows up as an itemId that was in
+		// the previous snapshot but is missing from this one.
+		const currentIds = new Set(connectionItems.map((item) => item.itemId));
 
-		for (const item of connectionItems) {
-			const wasCollected = previousItemState.get(item.itemId)?.isCollected;
-			if (!wasCollected && item.isCollected) {
-				item.kind === 'premium'
-					? playPremiumSound()
-					: playConnectionSound();
-			}
+		for (const item of previousItems.current) {
+			if (currentIds.has(item.itemId)) continue;
+			item.kind === 'premium' ? playPremiumSound() : playConnectionSound();
 		}
 
 		previousItems.current = connectionItems;

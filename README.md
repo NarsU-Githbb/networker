@@ -26,6 +26,20 @@ game with a public link" below.
 
 Local-only alternative, no tunnel: `npm run dev` (from `server/`).
 
+## Getting Started (Production Mode)
+
+To run a production build (client built and served as static files, server
+running with `NODE_ENV=production`) with a public Pinggy tunnel:
+
+```bash
+npm run start:public
+```
+
+This builds the client (`npm run build`, which runs the client's build from
+`server/`) and then starts the server with `TUNNEL=1 NODE_ENV=production`.
+Use this instead of `npm run dev:public` when you want to test/share the
+production build rather than the dev server.
+
 ## User Guide 
 
 1. (text here) 

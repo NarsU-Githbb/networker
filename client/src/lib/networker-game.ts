@@ -24,13 +24,15 @@ export type NetworkerPlayer = {
 // whoever collects one.
 export type NetworkerItemKind = 'connection' | 'premium';
 
-// Describes one Linkedin connection item on the map
+// Describes one Linkedin connection item on the map. Only present in
+// connectionItems while active - the server removes an item outright once
+// collected instead of flagging it, keeping the array (rebroadcast on every
+// state update) bounded for the whole match.
 export type NetworkerConnectionItem = {
 	itemId: string;
 	row: number;
 	col: number;
 	points: number;
-	isCollected: boolean;
 	kind: NetworkerItemKind;
 };
 
@@ -73,20 +75,20 @@ export function createInitialNetworkerState(): NetworkerGameState {
 		// the server will eventually provide the authoritative item state.
 		connectionItems: [
 			// Item positions use the shared maze's row/col coordinate system.
-			{ itemId: 'c1', row: 1, col: 3, points: 1, isCollected: false, kind: 'connection' },
-			{ itemId: 'c2', row: 1, col: 9, points: 2, isCollected: false, kind: 'connection' },
-			{ itemId: 'c3', row: 3, col: 1, points: 1, isCollected: false, kind: 'connection' },
-			{ itemId: 'c4', row: 3, col: 7, points: 2, isCollected: false, kind: 'connection' },
-			{ itemId: 'c5', row: 5, col: 1, points: 1, isCollected: false, kind: 'connection' },
-			{ itemId: 'c6', row: 5, col: 9, points: 2, isCollected: false, kind: 'connection' },
-			{ itemId: 'c7', row: 7, col: 3, points: 1, isCollected: false, kind: 'connection' },
-			{ itemId: 'c8', row: 9, col: 7, points: 2, isCollected: false, kind: 'connection' },
-			{ itemId: 'c9', row: 11, col: 9, points: 1, isCollected: false, kind: 'connection' },
+			{ itemId: 'c1', row: 1, col: 3, points: 1, kind: 'connection' },
+			{ itemId: 'c2', row: 1, col: 9, points: 2, kind: 'connection' },
+			{ itemId: 'c3', row: 3, col: 1, points: 1, kind: 'connection' },
+			{ itemId: 'c4', row: 3, col: 7, points: 2, kind: 'connection' },
+			{ itemId: 'c5', row: 5, col: 1, points: 1, kind: 'connection' },
+			{ itemId: 'c6', row: 5, col: 9, points: 2, kind: 'connection' },
+			{ itemId: 'c7', row: 7, col: 3, points: 1, kind: 'connection' },
+			{ itemId: 'c8', row: 9, col: 7, points: 2, kind: 'connection' },
+			{ itemId: 'c9', row: 11, col: 9, points: 1, kind: 'connection' },
 		],
 	};
 }
 
-// Updates scores, marks item as isCollected, returns  new game state.
+// Updates scores and removes the item, returns new game state.
 export function collectItem(
 	state: NetworkerGameState,
 	username: string,
@@ -98,7 +100,7 @@ export function collectItem(
 		(item) => item.itemId === itemId,
 	);
 
-	if (!connection || connection.isCollected) return state;
+	if (!connection) return state;
 
 	const players = state.players.map((player) => {
 		if (player.username !== username) return player;
@@ -116,9 +118,7 @@ export function collectItem(
 		phase: winningPlayer ? 'ended' : state.phase,
 		winnerUsername: winningPlayer?.username ?? state.winnerUsername,
 		players,
-		connectionItems: state.connectionItems.map((item) =>
-			item.itemId === itemId ? { ...item, isCollected: true } : item,
-		),
+		connectionItems: state.connectionItems.filter((item) => item.itemId !== itemId),
 		systemMessage: `${username} collected ${connection.points} LinkedIn connections.`,
 	};
 }

@@ -158,13 +158,15 @@ const MazeGrid = memo(function MazeGrid({ networkerMap }: { networkerMap: readon
   )
 })
 
-// The dynamic items layer. Rendered as direct children of the same CSS grid
-// as MazeGrid (see .networker-maze), placed onto their cell with explicit
-// grid-row/grid-column instead of pixel math - items don't animate between
-// cells like the player tokens do, they just appear/disappear, so plain grid
-// placement is enough and needs no tile-size measurement at all. Only the
-// active items exist as elements (currently capped at 30), versus diffing
-// all ~170 tiles on every respawn.
+// The dynamic items layer. Positioned like the player tokens - absolutely,
+// via a pixel offset computed from --networker-maze-tile-size in CSS (see
+// .networker-maze-item-token) - instead of as real grid children. Items
+// don't animate between cells like tokens do, so no rAF/tileSize plumbing is
+// needed here, just the row/col custom properties; the point of staying out
+// of grid flow is that a spawn/collect no longer makes the grid re-run
+// placement/track-sizing for every child. Only the active items exist as
+// elements (currently capped at 30), versus diffing all ~170 tiles on every
+// respawn.
 const MazeItems = memo(function MazeItems() {
   // The maze reads item state from Zustand, but does not award points or mark
   // items as collected. Those rules belong to the authoritative game state.
@@ -180,7 +182,6 @@ const MazeItems = memo(function MazeItems() {
     const seenCells = new Set<number>()
     const items: NetworkerConnectionItem[] = []
     for (const item of connectionItems) {
-      if (item.isCollected) continue
       const key = item.row * mazeColumns + item.col
       if (seenCells.has(key)) continue
       if (!isNetworkerWalkable(item.row, item.col, networkerMap)) continue
@@ -195,10 +196,15 @@ const MazeItems = memo(function MazeItems() {
       {visibleItems.map((item) => (
         <span
           key={item.itemId}
-          className={`networker-maze-item${
+          className={`networker-maze-item networker-maze-item-token${
             item.kind === "premium" ? " networker-maze-item-premium" : ""
           }`}
-          style={{ gridRow: item.row + 1, gridColumn: item.col + 1 }}
+          style={
+            {
+              "--networker-item-row": item.row,
+              "--networker-item-col": item.col,
+            } as React.CSSProperties
+          }
           title={
             item.kind === "premium"
               ? "LinkedIn Premium: momentary speed boost"
@@ -504,7 +510,7 @@ useEffect(() => {
               // same as the dash cooldown - a purely client-side feel effect.
               for (const cell of visitedCells) {
                 const passedItem = NetworkerStore.getState().gameState.connectionItems.find(
-                  (item) => item.row === cell.row && item.col === cell.col && !item.isCollected,
+                  (item) => item.row === cell.row && item.col === cell.col,
                 )
                 if (passedItem) {
                   socket.emit("collect_item", { itemId: passedItem.itemId })

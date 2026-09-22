@@ -405,9 +405,12 @@
 
 .networker-progress-track span {
 	display: block;
+	width: 100%;
 	height: 100%;
 	background: var(--networker-player-color);
-	transition: width 180ms ease-out;
+	transform: scaleX(0);
+	transform-origin: left;
+	transition: transform 180ms ease-out;
 }
 
 .networker-winner-banner {
@@ -469,15 +472,11 @@
 	max-width: 100%;
 	margin: 0 auto;
 	overflow: hidden;
-	/* Item spawns/collects insert or remove a grid child, and that always
-	   forces a real layout pass - there's no avoiding that part, something is
-	   genuinely appearing or disappearing. `contain: layout` tells the browser
-	   that pass never needs to look outside this box (nothing in here can
-	   change this element's own size, since every track is a fixed
-	   `--networker-maze-tile-size` regardless of item count, and nothing
-	   outside depends on this element's content) - so the recalculation stays
-	   scoped to the maze itself instead of also re-checking its siblings
-	   (the HUD, the page layout) on every spawn/collect. */
+	/* Items are absolutely positioned (see .networker-maze-item-token) rather
+	   than real grid children, so spawning/collecting one never triggers the
+	   grid's placement/track-sizing pass at all. `contain: layout` is kept
+	   anyway so anything that does still reflow in here (a viewport resize
+	   changing --networker-maze-tile-size) can't leak out to the HUD/page. */
 	contain: layout;
 }
 
@@ -513,16 +512,33 @@
 }
 
 .networker-maze-item {
-	/* Direct child of the .networker-maze grid now (see MazeItems), placed by
-	   explicit grid-row/grid-column - this centers it within that cell instead
-	   of the item stretching or pinning to the cell's corner. */
-	place-self: center;
 	width: 19px;
 	height: 19px;
 	border: 2px solid #f5c96a;
 	color: #f5c96a;
 	font-size: 0.5rem;
 	font-weight: 800;
+}
+
+/* Positions a maze item by pixel math instead of grid placement - the same
+   trick .networker-maze-player-token already uses for players. Row/col come
+   in as custom properties (see MazeItems) so this needs no JS measurement of
+   its own; it rides the same --networker-maze-tile-size the grid tracks use,
+   so it stays correct across resizes. Keeping items out of grid flow means
+   a spawn/collect only adds or removes one absolutely-positioned element -
+   it never asks the grid to re-run placement/track-sizing for the whole
+   board, which a real grid child add/remove always would. */
+.networker-maze-item-token {
+	position: absolute;
+	top: calc(
+		var(--networker-maze-tile-size) * var(--networker-item-row) +
+			var(--networker-maze-tile-size) / 2
+	);
+	left: calc(
+		var(--networker-maze-tile-size) * var(--networker-item-col) +
+			var(--networker-maze-tile-size) / 2
+	);
+	transform: translate(-50%, -50%);
 }
 
 .networker-maze-item-premium {
