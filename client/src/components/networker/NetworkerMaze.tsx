@@ -75,17 +75,30 @@ function chainStartTime(previousEndTime: number, time: number): number {
   return overshoot >= 0 && overshoot < MAX_CARRY_MS ? previousEndTime : time
 }
 
-function cellCenter(row: number, col: number, tileSize: number) {
-  return {
-    x: col * tileSize + tileSize / 2,
-    y: row * tileSize + tileSize / 2,
+// Last pixel position written to each token. The rAF loop runs every frame
+// even when nobody moves; writing style.transform anyway allocates a new
+// string in JS and a freshly parsed CSS value on Blink's C++ heap every
+// frame per token, and that churn is what showed up as periodic C++ GC /
+// Major GC pauses. Skipping unchanged writes makes an idle frame allocate
+// nothing.
+const lastTokenPosition = new WeakMap<HTMLSpanElement, { x: number; y: number }>()
+
+function setTokenPosition(token: HTMLSpanElement, x: number, y: number) {
+  const last = lastTokenPosition.get(token)
+  if (last) {
+    if (last.x === x && last.y === y) return
+    last.x = x
+    last.y = y
+  } else {
+    lastTokenPosition.set(token, { x, y })
   }
+  token.style.transform = `translate3d(${x}px, ${y}px, 0) translate(-50%, -50%)`
 }
 
 // Snaps a token straight to a cell - used for the resting (non-animating) state.
 function paintCell(token: HTMLSpanElement, cell: Cell, tileSize: number) {
-  const { x, y } = cellCenter(cell.row, cell.col, tileSize)
-  token.style.transform = `translate3d(${x}px, ${y}px, 0) translate(-50%, -50%)`
+  const half = tileSize / 2
+  setTokenPosition(token, cell.col * tileSize + half, cell.row * tileSize + half)
 }
 
 // Writes one frame of a cell-to-cell interpolation to a token's transform.
@@ -100,11 +113,11 @@ function applyAnimationFrame(
   tileSize: number,
 ) {
   const t = Math.min(1, (time - animation.startTime) / animation.durationMs)
-  const from = cellCenter(animation.from.row, animation.from.col, tileSize)
-  const to = cellCenter(animation.to.row, animation.to.col, tileSize)
-  const x = from.x + (to.x - from.x) * t
-  const y = from.y + (to.y - from.y) * t
-  token.style.transform = `translate3d(${x}px, ${y}px, 0) translate(-50%, -50%)`
+  const { from, to } = animation
+  const half = tileSize / 2
+  const x = (from.col + (to.col - from.col) * t) * tileSize + half
+  const y = (from.row + (to.row - from.row) * t) * tileSize + half
+  setTokenPosition(token, x, y)
   return t >= 1
 }
 
@@ -191,8 +204,14 @@ const MazeItems = memo(function MazeItems() {
     return items
   }, [connectionItems, mazeColumns, networkerMap])
 
+  // Own layer rather than direct children of the maze grid: adding/removing
+  // any child of a grid container - even an absolutely positioned one -
+  // dirties the grid and re-runs layout over every tile, which is what made
+  // each collect (and each respawn) cost a frame. The layer is size- and
+  // layout-contained (see .networker-maze-items-layer), so a spawn/collect
+  // only relayouts the handful of items inside it.
   return (
-    <>
+    <div className="networker-maze-items-layer">
       {visibleItems.map((item) => (
         <span
           key={item.itemId}
@@ -215,7 +234,7 @@ const MazeItems = memo(function MazeItems() {
           {item.kind === "premium" ? "★" : "in"}
         </span>
       ))}
-    </>
+    </div>
   )
 })
 

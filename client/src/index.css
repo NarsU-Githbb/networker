@@ -189,9 +189,19 @@
 	white-space: nowrap;
 }
 
+/* Fixed three-line box: the text changes on every collect ("X collected N
+   LinkedIn connections."), and letting it wrap/unwrap freely changed the
+   sidebar's height, which resized the stretched layout row and dragged the
+   maze section into a relayout on each pickup. */
 .networker-hud-message {
 	margin: 14px 0 0;
 	color: #b7c8b2;
+	line-height: 1.4;
+	height: 4.2em;
+	overflow: hidden;
+	display: -webkit-box;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 3;
 }
 
 .networker-timer {
@@ -502,6 +512,19 @@
 
 .networker-maze-floor {
 	background: #151d19;
+}
+
+/* Holds the item tokens (see MazeItems). Out of grid flow and fully
+   contained, so a spawn/collect never dirties the maze grid's layout. */
+.networker-maze-items-layer {
+	position: absolute;
+	inset: 0;
+	contain: strict;
+	pointer-events: none;
+}
+
+.networker-maze-items-layer .networker-maze-item {
+	pointer-events: auto;
 }
 
 .networker-maze-item,
