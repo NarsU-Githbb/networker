@@ -227,6 +227,7 @@ export function handleGame(io: Server, socket: CustomSocket) {
 
 socket.on("quit_game", (callback) => {
   const roomId = socket.roomId;
+const username = socket.username
 
   if (!roomId) {
     callback?.({
@@ -258,6 +259,17 @@ socket.on("quit_game", (callback) => {
       error: "Player not found in room.",
     });
     return;
+  }
+
+ 
+  const state = gameStates.get(roomId);
+  if (state && username) {
+    const nextState = {
+      ...state,
+      systemMessage: `${username} quit the game.`,
+    };
+    gameStates.set(roomId, nextState);
+    io.to(roomId).emit("game_state_updated", nextState);
   }
 
   const isLead =
