@@ -7,6 +7,7 @@ import { NetworkerOverlay } from '@/components/networker/NetworkerOverlay'
 import { NetworkerSoundEffects } from '@/components/networker/NetworkerSoundEffects'
 import { useNetworkerStore } from '@/lib/networker-store'
 import type { NetworkerGameState } from '@/lib/networker-game'
+import { Toaster, toast } from 'sonner'
 
 const gameSearchSchema = z.object({
   roomId: z.string().min(1, 'Room ID is missing or invalid'),
@@ -41,6 +42,22 @@ function Game() {
       socket.off('game_state_updated', handleGameStateUpdated)
     }
   }, [socket, roomId, setGameState])
+
+  useEffect(() => {
+  const handlePlayerDisconnected = ({
+    username,
+  }: {
+    username: string
+  }) => {
+    toast(`${username} has been disconnected`)
+  }
+
+  socket.on('disconnected_player', handlePlayerDisconnected)
+
+  return () => {
+    socket.off('disconnected_player', handlePlayerDisconnected)
+  }
+}, [socket])
 
   useEffect(() => {
     const handleReturnToLobby = () => {
@@ -85,6 +102,7 @@ function Game() {
           rematchError={rematchError}
         />
         <NetworkerSoundEffects localUsername={username} />
+        <Toaster />
       </div>
     </main>
   )

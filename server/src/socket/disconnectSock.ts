@@ -55,6 +55,10 @@ their internet connection cuts for a second or two for example.
       return;
     }
 
+     io.to(roomId).emit('disconnected_player', {
+    username: currentPlayer.username,
+  })
+
     removePlayerFromRoom(currentRoom, socket, io);
   }, 30_000);
 }
