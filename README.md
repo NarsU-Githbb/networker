@@ -150,7 +150,7 @@ The project separates the game into four cooperating parts:
 
 The client reports movement and collection attempts. The server checks collection requests against its current item state, applies score changes, and broadcasts the resulting match state. Movement rendering and wall collision run in the browser. This keeps scores and active items synchronized without putting per-frame animation into React.
 
-Shared event and state names are documented in [`docs/shared-names.md`](docs/shared-names.md). A higher-level data-flow diagram is available in [`docs/networker-architecture.md`](docs/networker-architecture.md).
+Shared event and state names are documented in [`docs/shared-names.md`](docs/shared-names.md). 
 
 ## Project Structure
 
